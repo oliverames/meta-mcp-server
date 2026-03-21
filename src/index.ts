@@ -8,6 +8,7 @@ import { registerAudiencesTools } from "./tools/audiences.js";
 import { registerInsightsTools } from "./tools/insights.js";
 import { registerThreadsTools } from "./tools/threads.js";
 import { registerAdLibraryTools } from "./tools/ad_library.js";
+import { registerConversionTools } from "./tools/conversions.js";
 import { registerUtilityTools } from "./tools/utility.js";
 import { registerChartTools } from "./tools/charts.js";
 
@@ -28,6 +29,7 @@ registerAudiencesTools(server, client);
 registerInsightsTools(server, client);
 registerThreadsTools(server, client);
 registerAdLibraryTools(server, client);
+registerConversionTools(server, client);
 registerUtilityTools(server, client);
 registerChartTools(server);
 

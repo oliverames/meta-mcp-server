@@ -89,7 +89,7 @@ describe("MCP Server Integration", () => {
     const tools = (response as any).result?.tools;
     expect(tools).toBeDefined();
     expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBe(146);
+    expect(tools.length).toBe(154);
 
     // Verify key tools exist
     const names = tools.map((t: any) => t.name);
@@ -99,6 +99,10 @@ describe("MCP Server Integration", () => {
     expect(names).toContain("meta_search_ad_library");
     expect(names).toContain("meta_get_campaign");
     expect(names).toContain("meta_check_instagram_publishing_limit");
+    expect(names).toContain("meta_publish_page_story");
+    expect(names).toContain("meta_create_live_video");
+    expect(names).toContain("meta_get_live_videos");
+    expect(names).toContain("meta_end_live_video");
   });
 
   it("returns helpful error when calling tool without token", async () => {

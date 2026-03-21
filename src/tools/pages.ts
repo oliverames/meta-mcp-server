@@ -2454,4 +2454,269 @@ Requires pages_manage_engagement permission.`,
       }
     }
   );
+
+  // ─── Publish Page Story ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_publish_page_story",
+    {
+      title: "Publish Facebook Page Story",
+      description: `Publishes a story (photo or video) to a Facebook Page.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - media_url (string): Public URL of the image or video
+  - media_type (enum): "photo" or "video"
+
+Returns the story ID on success.`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          media_url: z.string().url().describe("Public URL of the image or video"),
+          media_type: z.enum(["photo", "video"]).describe("Type of media: photo or video"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, media_url, media_type, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const fields: Record<string, unknown> =
+          media_type === "photo" ? { photo_url: media_url } : { video_url: media_url };
+
+        const result = await client.post<{ id: string }>(
+          `/${page_id}/stories`,
+          fields,
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Story published.\n\n- **Story ID**: \`${result.id}\``,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Live Video ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_live_video",
+    {
+      title: "Create Facebook Live Video",
+      description: `Creates a live video broadcast on a Facebook Page.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - title (string): Title of the live video
+  - description (string, optional): Description of the broadcast
+  - planned_start_time (string, optional): ISO 8601 datetime for scheduled broadcasts
+
+If planned_start_time is provided, the broadcast is created as SCHEDULED_UNPUBLISHED; otherwise it goes LIVE_NOW.
+
+Returns the stream URL and live video ID.`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          title: z.string().describe("Title of the live video"),
+          description: z.string().optional().describe("Description of the broadcast"),
+          planned_start_time: z.string().optional().describe("ISO 8601 datetime for scheduled broadcasts"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, title, description, planned_start_time, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const fields: Record<string, unknown> = {
+          title,
+          status: planned_start_time ? "SCHEDULED_UNPUBLISHED" : "LIVE_NOW",
+        };
+        if (description) fields.description = description;
+        if (planned_start_time) fields.planned_start_time = planned_start_time;
+
+        const result = await client.post<{ id: string; stream_url?: string }>(
+          `/${page_id}/live_videos`,
+          fields,
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        const lines = [
+          "Live video created.",
+          "",
+          `- **Live Video ID**: \`${result.id}\``,
+        ];
+        if (result.stream_url) lines.push(`- **Stream URL**: ${result.stream_url}`);
+        if (planned_start_time) lines.push(`- **Scheduled For**: ${planned_start_time}`);
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Live Videos ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_live_videos",
+    {
+      title: "List Facebook Live Videos",
+      description: `Lists live videos on a Facebook Page.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - broadcast_status (enum, optional): Filter by status — "LIVE", "UNPUBLISHED", "SCHEDULED_UNPUBLISHED", or "VOD"
+  - limit (number, optional): Max results (1–100, default 10)
+  - after (string, optional): Pagination cursor
+
+Returns live video details including title, status, views, and creation time.`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          broadcast_status: z.enum(["LIVE", "UNPUBLISHED", "SCHEDULED_UNPUBLISHED", "VOD"]).optional().describe("Filter by broadcast status"),
+          limit: z.number().int().min(1).max(100).default(10),
+          after: z.string().optional().describe("Pagination cursor for next page"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, broadcast_status, limit, after, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const params: Record<string, unknown> = {
+          fields: "id,title,status,embed_html,live_views,planned_start_time,creation_time",
+          limit,
+        };
+        if (broadcast_status) params.broadcast_status = broadcast_status;
+        if (after) params.after = after;
+
+        const data = await client.getWithToken<MetaPaginatedResponse<{
+          id: string;
+          title?: string;
+          status?: string;
+          embed_html?: string;
+          live_views?: number;
+          planned_start_time?: string;
+          creation_time?: string;
+        }>>(
+          `/${page_id}/live_videos`,
+          pageToken,
+          params
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No live videos found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Live Videos (${data.data.length} shown)`, ""];
+        for (const video of data.data) {
+          lines.push(`## ${truncateField(video.title ?? "Untitled", 100)} (\`${video.id}\`)`);
+          if (video.status) lines.push(`- **Status**: ${video.status}`);
+          if (video.live_views != null) lines.push(`- **Live Views**: ${formatNumber(video.live_views)}`);
+          if (video.planned_start_time) lines.push(`- **Scheduled**: ${formatDate(video.planned_start_time)}`);
+          if (video.creation_time) lines.push(`- **Created**: ${formatDate(video.creation_time)}`);
+          if (video.embed_html) lines.push(`- **Embed HTML**: ${truncateField(video.embed_html, 200)}`);
+          lines.push("");
+        }
+        if (nextCursor) {
+          lines.push(buildPaginationNote(data.data.length, nextCursor));
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "live videos") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── End Live Video ───────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_end_live_video",
+    {
+      title: "End Facebook Live Video",
+      description: `Ends an active live video broadcast.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - live_video_id (string): The live video ID to end
+  - page_id (string): Facebook Page ID (needed for page token auth)
+
+Ends the broadcast immediately.`,
+      inputSchema: z
+        .object({
+          live_video_id: z.string().describe("The live video ID to end"),
+          page_id: z.string().describe("Facebook Page ID (for auth)"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ live_video_id, page_id, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<{ success?: boolean }>(
+          `/${live_video_id}`,
+          { end_live_video: true },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Live video \`${live_video_id}\` ended successfully.`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }

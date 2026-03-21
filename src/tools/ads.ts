@@ -2316,4 +2316,80 @@ Args:
       }
     }
   );
+
+  // ─── List Business Assets ─────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_business_assets",
+    {
+      title: "List Business Manager Assets",
+      description: `Lists assets (pages, ad accounts, Instagram accounts, pixels) for a Business Manager.
+
+Args:
+  - business_id: Business Manager ID
+  - asset_type: "owned_pages", "owned_ad_accounts", "owned_instagram_accounts", "owned_pixels"
+  - limit (optional, default 25): Max results
+
+Returns asset details including IDs, names, and type-specific metadata.`,
+      inputSchema: z
+        .object({
+          business_id: z.string().describe("Business Manager ID"),
+          asset_type: z.enum(["owned_pages", "owned_ad_accounts", "owned_instagram_accounts", "owned_pixels"]).describe("Type of assets to list"),
+          limit: z.number().int().min(1).max(100).default(25),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ business_id, asset_type, limit, response_format }) => {
+      try {
+        const fieldsByType: Record<string, string> = {
+          owned_pages: "id,name,category,fan_count",
+          owned_ad_accounts: "id,name,account_status,currency",
+          owned_instagram_accounts: "id,username,name,followers_count",
+          owned_pixels: "id,name,creation_time",
+        };
+
+        const data = await client.get<MetaPaginatedResponse<Record<string, unknown>>>(
+          `/${business_id}/${asset_type}`,
+          { fields: fieldsByType[asset_type], limit }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: `No ${asset_type.replace("owned_", "")} found.` }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const label = asset_type.replace("owned_", "").replace(/_/g, " ");
+        const lines = [`# Business ${label} (${data.data.length})`, ""];
+        for (const item of data.data) {
+          const name = (item.name ?? item.username ?? "Unnamed") as string;
+          lines.push(`## ${name} (\`${item.id}\`)`);
+          if (asset_type === "owned_pages") {
+            lines.push(`- **Category**: ${item.category ?? "N/A"}`);
+            if (item.fan_count != null) lines.push(`- **Fans**: ${formatNumber(item.fan_count as string)}`);
+          } else if (asset_type === "owned_ad_accounts") {
+            lines.push(`- **Status**: ${item.account_status}`);
+            lines.push(`- **Currency**: ${item.currency ?? "N/A"}`);
+          } else if (asset_type === "owned_instagram_accounts") {
+            if (item.username) lines.push(`- **Username**: @${item.username}`);
+            if (item.followers_count != null) lines.push(`- **Followers**: ${formatNumber(item.followers_count as string)}`);
+          } else if (asset_type === "owned_pixels") {
+            if (item.creation_time) lines.push(`- **Created**: ${formatDate(item.creation_time as string)}`);
+          }
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), label) }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }
