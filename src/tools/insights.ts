@@ -65,21 +65,63 @@ function formatInsightsMarkdown(
 
     if (label) lines.push(`## ${label}`);
     lines.push(`- **Period**: ${row.date_start} → ${row.date_stop}`);
+    // Performance
     if (row.impressions) lines.push(`- **Impressions**: ${formatNumber(row.impressions)}`);
     if (row.reach) lines.push(`- **Reach**: ${formatNumber(row.reach)}`);
     if (row.clicks) lines.push(`- **Clicks**: ${formatNumber(row.clicks)}`);
     if (row.unique_clicks) lines.push(`- **Unique Clicks**: ${formatNumber(row.unique_clicks)}`);
-    // Insights API returns spend/cpm/cpc as dollar strings (not cents)
+    if (row.frequency) lines.push(`- **Frequency**: ${parseFloat(row.frequency).toFixed(2)}`);
+    // Cost metrics — Insights API returns spend/cpm/cpc as dollar strings (not cents)
     if (row.spend) lines.push(`- **Spend**: $${parseFloat(row.spend).toFixed(2)}`);
     if (row.cpm) lines.push(`- **CPM**: $${parseFloat(row.cpm).toFixed(2)}`);
     if (row.cpc) lines.push(`- **CPC**: $${parseFloat(row.cpc).toFixed(2)}`);
+    if (row.cpp) lines.push(`- **CPP**: $${parseFloat(row.cpp).toFixed(2)}`);
     // CTR is returned as a percentage (e.g., "2.5" = 2.5%)
     if (row.ctr) lines.push(`- **CTR**: ${parseFloat(row.ctr).toFixed(2)}%`);
-    if (row.frequency) lines.push(`- **Frequency**: ${parseFloat(row.frequency).toFixed(2)}`);
+    // Engagement
+    if (row.inline_link_clicks) lines.push(`- **Link Clicks**: ${formatNumber(row.inline_link_clicks)}`);
+    if (row.inline_link_click_ctr) lines.push(`- **Link CTR**: ${parseFloat(row.inline_link_click_ctr).toFixed(2)}%`);
+    if (row.outbound_clicks) lines.push(`- **Outbound Clicks**: ${formatNumber(row.outbound_clicks)}`);
+    if (row.inline_post_engagement) lines.push(`- **Post Engagement**: ${formatNumber(row.inline_post_engagement)}`);
+    if (row.social_spend) lines.push(`- **Social Spend**: $${parseFloat(row.social_spend).toFixed(2)}`);
+    // Conversions
+    if (row.purchase_roas?.length) {
+      for (const r of row.purchase_roas) {
+        lines.push(`- **ROAS** (${r.action_type}): ${parseFloat(r.value).toFixed(2)}x`);
+      }
+    }
+    // Quality rankings
+    if (row.quality_ranking) lines.push(`- **Quality Ranking**: ${row.quality_ranking}`);
+    if (row.engagement_rate_ranking) lines.push(`- **Engagement Rate Ranking**: ${row.engagement_rate_ranking}`);
+    if (row.conversion_rate_ranking) lines.push(`- **Conversion Rate Ranking**: ${row.conversion_rate_ranking}`);
+    // Video
+    if (row.video_thruplay_watched_actions?.length) {
+      lines.push(`- **ThruPlays**: ${formatNumber(row.video_thruplay_watched_actions[0].value)}`);
+    }
+    if (row.video_avg_time_watched_actions?.length) {
+      lines.push(`- **Avg Watch Time**: ${row.video_avg_time_watched_actions[0].value}s`);
+    }
+    if (row.video_p25_watched_actions?.length) lines.push(`- **Video 25%**: ${formatNumber(row.video_p25_watched_actions[0].value)}`);
+    if (row.video_p50_watched_actions?.length) lines.push(`- **Video 50%**: ${formatNumber(row.video_p50_watched_actions[0].value)}`);
+    if (row.video_p75_watched_actions?.length) lines.push(`- **Video 75%**: ${formatNumber(row.video_p75_watched_actions[0].value)}`);
+    if (row.video_p100_watched_actions?.length) lines.push(`- **Video 100%**: ${formatNumber(row.video_p100_watched_actions[0].value)}`);
+    // Actions and conversions
     if (row.actions?.length) {
       lines.push(`- **Actions**:`);
-      for (const action of row.actions.slice(0, 10)) {
+      for (const action of row.actions.slice(0, 15)) {
         lines.push(`  - ${action.action_type}: ${formatNumber(action.value)}`);
+      }
+    }
+    if (row.conversions?.length) {
+      lines.push(`- **Conversions**:`);
+      for (const conv of row.conversions.slice(0, 10)) {
+        lines.push(`  - ${conv.action_type}: ${formatNumber(conv.value)}`);
+      }
+    }
+    if (row.cost_per_action_type?.length) {
+      lines.push(`- **Cost per Action**:`);
+      for (const cpa of row.cost_per_action_type.slice(0, 10)) {
+        lines.push(`  - ${cpa.action_type}: $${parseFloat(cpa.value).toFixed(2)}`);
       }
     }
     lines.push("");
@@ -103,7 +145,13 @@ Args:
   - until (string, optional): Custom end date YYYY-MM-DD
   - breakdowns (string[], optional): Segment by age, gender, country, device_platform, placement, etc.
 
-Returns spend, impressions, reach, clicks, CTR, CPM, CPC, and conversion actions.`,
+Returns comprehensive metrics including:
+  Performance: impressions, reach, clicks, spend, frequency, unique_clicks, unique_impressions
+  Cost: cpm, cpc, cpp, ctr, cost_per_action_type, cost_per_conversion, cost_per_inline_link_click, cost_per_outbound_click, cost_per_thruplay
+  Engagement: actions, inline_link_clicks, inline_link_click_ctr, inline_post_engagement, outbound_clicks, outbound_clicks_ctr, social_spend
+  Conversions: conversions, conversion_values, purchase_roas
+  Video: video_play_actions, video_avg_time_watched_actions, video_thruplay_watched_actions, video_p25/p50/p75/p95/p100_watched_actions
+  Quality: quality_ranking, engagement_rate_ranking, conversion_rate_ranking`,
       inputSchema: z
         .object({
           ad_account_id: z.string(),

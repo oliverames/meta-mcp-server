@@ -587,22 +587,28 @@ Returns: Current usage and quota remaining.`,
 Args:
   - ig_account_id (string): Instagram account ID
   - metrics (string[]): Metrics to retrieve. Options:
-      impressions, reach, profile_views, website_clicks,
-      follower_count, email_contacts, phone_call_clicks,
-      text_message_clicks, get_directions_clicks
-  - period (string): 'day', 'week', 'days_28', 'month'
+      Interactions: accounts_engaged, total_interactions, likes, comments, shares, saves, replies, reposts, reach, views, profile_links_taps
+      Legacy: impressions (deprecated v22.0+), follower_count, email_contacts, phone_call_clicks, text_message_clicks, get_directions_clicks, profile_views, website_clicks
+      Demographics: engaged_audience_demographics, reached_audience_demographics, follower_demographics, online_followers
+  - period (string): 'day', 'week', 'days_28', 'month', 'lifetime' (lifetime only for demographic metrics)
   - since (string, optional): Start date YYYY-MM-DD
-  - until (string, optional): End date YYYY-MM-DD`,
+  - until (string, optional): End date YYYY-MM-DD
+  - breakdown (string, optional): For demographic metrics: 'age', 'city', 'country', 'gender'
+  - timeframe (string, optional): For demographic metrics: 'last_14_days', 'last_30_days', 'last_90_days', 'this_month', 'this_week'
+
+Note: demographic metrics require 100+ followers. online_followers only available for last 30 days.`,
       inputSchema: z
         .object({
           ig_account_id: z.string(),
           metrics: z
             .array(z.string())
-            .default(["impressions", "reach", "profile_views", "follower_count"])
-            .describe("Metric names"),
-          period: z.enum(["day", "week", "days_28", "month"]).default("day"),
+            .default(["reach", "accounts_engaged", "total_interactions", "likes", "comments", "shares", "saves", "profile_links_taps"])
+            .describe("Metric names (see description for full list)"),
+          period: z.enum(["day", "week", "days_28", "month", "lifetime"]).default("day"),
           since: z.string().optional(),
           until: z.string().optional(),
+          breakdown: z.enum(["age", "city", "country", "gender"]).optional().describe("For demographic metrics only"),
+          timeframe: z.enum(["last_14_days", "last_30_days", "last_90_days", "prev_month", "this_month", "this_week"]).optional().describe("For demographic metrics only"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -613,7 +619,7 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ ig_account_id, metrics, period, since, until, response_format }) => {
+    async ({ ig_account_id, metrics, period, since, until, breakdown, timeframe, response_format }) => {
       try {
         const params: Record<string, unknown> = {
           metric: metrics.join(","),
@@ -621,6 +627,8 @@ Args:
         };
         if (since) params.since = since;
         if (until) params.until = until;
+        if (breakdown) params.breakdown = breakdown;
+        if (timeframe) params.timeframe = timeframe;
 
         const data = await client.get<{ data: unknown[] }>(`/${ig_account_id}/insights`, params);
 
@@ -659,17 +667,20 @@ Args:
 
 Args:
   - media_id (string): Instagram media ID (from meta_get_instagram_media)
-  - metrics (string[]): Metrics to retrieve. Options vary by media type:
-      For images/carousels: impressions, reach, engagement, saved, likes, comments
-      For reels: plays, reach, likes, comments, shares, saved, total_interactions
-      For stories: impressions, reach, exits, replies, taps_forward, taps_back`,
+  - metrics (string[]): Metrics vary by media type:
+      Photos/Carousels: reach, likes, comments, shares, saved, total_interactions, follows, profile_visits, profile_activity, views, impressions (deprecated)
+      Reels/Video: reach, likes, comments, shares, saved, total_interactions, follows, profile_visits, profile_activity, views, ig_reels_avg_watch_time, ig_reels_video_view_total_time, impressions (deprecated), plays (deprecated), clips_replays_count (deprecated)
+      Stories: reach, shares, follows, profile_visits, profile_activity, replies, navigation, total_interactions, views, impressions (deprecated)
+
+  - breakdown (string, optional): 'action_type' (for profile_activity) or 'story_navigation_action_type' (for navigation)`,
       inputSchema: z
         .object({
           media_id: z.string().describe("Instagram media ID"),
           metrics: z
             .array(z.string())
-            .default(["impressions", "reach", "engagement", "saved"])
-            .describe("Metric names"),
+            .default(["reach", "likes", "comments", "shares", "saved", "total_interactions"])
+            .describe("Metric names (options depend on media type — see description)"),
+          breakdown: z.enum(["action_type", "story_navigation_action_type"]).optional().describe("For profile_activity or navigation metrics"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -680,11 +691,11 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ media_id, metrics, response_format }) => {
+    async ({ media_id, metrics, breakdown, response_format }) => {
       try {
-        const data = await client.get<{ data: unknown[] }>(`/${media_id}/insights`, {
-          metric: metrics.join(","),
-        });
+        const params: Record<string, unknown> = { metric: metrics.join(",") };
+        if (breakdown) params.breakdown = breakdown;
+        const data = await client.get<{ data: unknown[] }>(`/${media_id}/insights`, params);
 
         if (response_format === "json") {
           return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };

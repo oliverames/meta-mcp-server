@@ -152,17 +152,48 @@ export interface MetaPaginatedResponse<T> {
 export interface InsightData {
   date_start: string;
   date_stop: string;
+  // Performance
   impressions?: string;
   reach?: string;
   clicks?: string;
   unique_clicks?: string;
+  unique_impressions?: string;
+  frequency?: string;
+  // Cost
   spend?: string;
   cpm?: string;
   cpc?: string;
+  cpp?: string;
   ctr?: string;
-  frequency?: string;
+  social_spend?: string;
+  // Engagement
+  inline_link_clicks?: string;
+  inline_link_click_ctr?: string;
+  inline_post_engagement?: string;
+  outbound_clicks?: string;
+  outbound_clicks_ctr?: string;
+  // Conversions
+  conversions?: Array<{ action_type: string; value: string }>;
+  conversion_values?: Array<{ action_type: string; value: string }>;
+  cost_per_conversion?: Array<{ action_type: string; value: string }>;
+  purchase_roas?: Array<{ action_type: string; value: string }>;
+  // Video
+  video_play_actions?: Array<{ action_type: string; value: string }>;
+  video_avg_time_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_thruplay_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_p25_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_p50_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_p75_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_p95_watched_actions?: Array<{ action_type: string; value: string }>;
+  video_p100_watched_actions?: Array<{ action_type: string; value: string }>;
+  // Quality
+  quality_ranking?: string;
+  engagement_rate_ranking?: string;
+  conversion_rate_ranking?: string;
+  // Actions
   actions?: Array<{ action_type: string; value: string }>;
   cost_per_action_type?: Array<{ action_type: string; value: string }>;
+  // Entity IDs
   campaign_id?: string;
   campaign_name?: string;
   adset_id?: string;

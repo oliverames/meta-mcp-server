@@ -572,7 +572,7 @@ Args:
 
 Args:
   - media_id (string): Threads media ID
-  - metrics (string[]): Metrics to retrieve. Options: views, likes, replies, reposts, quotes, shares
+  - metrics (string[]): Metrics to retrieve. Options: views, likes, replies, reposts, quotes, shares, reach, saved
 
 Returns: Metric values for the post.`,
       inputSchema: z
@@ -624,19 +624,21 @@ Returns: Metric values for the post.`,
 
 Args:
   - threads_user_id (string): Threads user ID
-  - metrics (string[]): Options: views, likes, replies, reposts, quotes, followers_count, follower_demographics
+  - metrics (string[]): Options:
+      Time-series: views, likes, replies, reposts, quotes, followers_count, reach
+      Demographics: follower_demographics (breakdown by age, country, city, gender — requires 100+ followers)
   - since (string, optional): Start date YYYY-MM-DD (required for time-series metrics)
   - until (string, optional): End date YYYY-MM-DD
-
-Note: follower_demographics requires at least 100 followers and returns age, country, city, gender breakdowns.`,
+  - breakdown (string, optional): For follower_demographics: 'age', 'country', 'city', 'gender'`,
       inputSchema: z
         .object({
           threads_user_id: z.string(),
           metrics: z
             .array(z.string())
-            .default(["views", "likes", "replies", "reposts", "quotes", "followers_count"]),
+            .default(["views", "likes", "replies", "reposts", "quotes", "followers_count", "reach"]),
           since: z.string().optional(),
           until: z.string().optional(),
+          breakdown: z.enum(["age", "country", "city", "gender"]).optional().describe("For follower_demographics metric only"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -647,11 +649,12 @@ Note: follower_demographics requires at least 100 followers and returns age, cou
         openWorldHint: false,
       },
     },
-    async ({ threads_user_id, metrics, since, until, response_format }) => {
+    async ({ threads_user_id, metrics, since, until, breakdown, response_format }) => {
       try {
         const params: Record<string, unknown> = { metric: metrics.join(",") };
         if (since) params.since = since;
         if (until) params.until = until;
+        if (breakdown) params.breakdown = breakdown;
 
         const data = await client.threadsGet<{ data: Array<{ name: string; title?: string; total_value?: { value: number }; values?: Array<{ value: unknown }> }> }>(
           `/${threads_user_id}/threads_insights`,

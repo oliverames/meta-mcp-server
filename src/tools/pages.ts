@@ -644,10 +644,15 @@ Requires: meta_list_pages called first.
 
 Args:
   - page_id (string): Facebook Page ID
-  - metrics (string[]): Metrics to retrieve. Common options:
-      page_impressions, page_reach, page_engaged_users,
-      page_fan_adds_unique, page_views_total,
-      page_post_engagements, page_video_views
+  - metrics (string[]): Metrics to retrieve. Full options:
+      Impressions: page_impressions, page_impressions_unique, page_impressions_organic, page_impressions_organic_unique, page_impressions_paid, page_impressions_paid_unique, page_impressions_viral, page_impressions_viral_unique, page_impressions_nonviral, page_impressions_nonviral_unique
+      Post Impressions: page_posts_impressions, page_posts_impressions_unique, page_posts_impressions_organic, page_posts_impressions_organic_unique, page_posts_impressions_paid, page_posts_impressions_paid_unique, page_posts_impressions_viral, page_posts_impressions_viral_unique
+      Engagement: page_engaged_users, page_post_engagements, page_total_actions, page_negative_feedback
+      Reactions: page_actions_post_reactions_total, page_actions_post_reactions_like_total, page_actions_post_reactions_love_total, page_actions_post_reactions_wow_total, page_actions_post_reactions_haha_total, page_actions_post_reactions_sorry_total, page_actions_post_reactions_anger_total
+      Fans: page_fans, page_fan_adds, page_fan_adds_unique, page_fan_adds_by_paid_non_paid_unique, page_fan_removes, page_fan_removes_unique, page_daily_follows, page_daily_follows_unique, page_daily_unfollows_unique
+      Views: page_views_total, page_tab_views_login_top, page_tab_views_login_top_unique, page_tab_views_logout_top
+      Video: page_video_views, page_video_views_unique, page_video_views_paid, page_video_views_organic, page_video_views_autoplayed, page_video_views_click_to_play, page_video_complete_views_30s, page_video_complete_views_30s_unique, page_video_complete_views_30s_paid, page_video_complete_views_30s_organic, page_video_repeat_views, page_video_view_time, page_video_views_10s, page_video_views_10s_unique, page_video_views_10s_paid, page_video_views_10s_organic
+      Content: page_media_view, page_lifetime_engaged_followers_unique
   - period (string): Aggregation period: 'day', 'week', 'days_28', 'month'
   - since (string, optional): Start date YYYY-MM-DD
   - until (string, optional): End date YYYY-MM-DD
@@ -660,12 +665,16 @@ Returns: Time-series data for each metric.`,
             .array(z.string())
             .default([
               "page_impressions",
-              "page_reach",
+              "page_impressions_unique",
               "page_engaged_users",
+              "page_post_engagements",
               "page_fan_adds_unique",
+              "page_fan_removes_unique",
               "page_views_total",
+              "page_actions_post_reactions_total",
+              "page_video_views",
             ])
-            .describe("Metric names to retrieve"),
+            .describe("Metric names — see description for full list of 70+ available metrics"),
           period: z
             .enum(["day", "week", "days_28", "month"])
             .default("day")
