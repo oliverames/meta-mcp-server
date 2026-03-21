@@ -614,9 +614,11 @@ Returns: Current usage and quota remaining.`,
 Args:
   - ig_account_id (string): Instagram account ID
   - metrics (string[]): Metrics to retrieve. Options:
-      Interactions: accounts_engaged, total_interactions, likes, comments, shares, saves, replies, reposts, reach, views, profile_links_taps
+      Interactions: accounts_engaged, total_interactions, likes, comments, shares, saves, replies, reposts, reach, views, profile_links_taps, account_repost_count
       Legacy: impressions (deprecated v22.0+), follower_count, email_contacts, phone_call_clicks, text_message_clicks, get_directions_clicks, profile_views, website_clicks
       Demographics: engaged_audience_demographics, reached_audience_demographics, follower_demographics, online_followers
+
+Note: account_repost_count (Dec 2025) returns the total number of reposts across the account for the given period.
   - period (string): 'day', 'week', 'days_28', 'month', 'lifetime' (lifetime only for demographic metrics)
   - since (string, optional): Start date YYYY-MM-DD
   - until (string, optional): End date YYYY-MM-DD
@@ -629,7 +631,7 @@ Note: demographic metrics require 100+ followers. online_followers only availabl
           ig_account_id: z.string(),
           metrics: z
             .array(z.string())
-            .default(["reach", "accounts_engaged", "total_interactions", "likes", "comments", "shares", "saves", "profile_links_taps"])
+            .default(["reach", "accounts_engaged", "total_interactions", "likes", "comments", "shares", "saves", "profile_links_taps", "account_repost_count"])
             .describe("Metric names (see description for full list)"),
           period: z.enum(["day", "week", "days_28", "month", "lifetime"]).default("day"),
           since: z.string().optional(),
@@ -696,8 +698,14 @@ Args:
   - media_id (string): Instagram media ID (from meta_get_instagram_media)
   - metrics (string[]): Metrics vary by media type:
       Photos/Carousels: reach, likes, comments, shares, saved, total_interactions, follows, profile_visits, profile_activity, views, impressions (deprecated)
-      Reels/Video: reach, likes, comments, shares, saved, total_interactions, follows, profile_visits, profile_activity, views, ig_reels_avg_watch_time, ig_reels_video_view_total_time, impressions (deprecated), plays (deprecated), clips_replays_count (deprecated)
+      Reels/Video: reach, likes, comments, shares, saved, total_interactions, follows, profile_visits, profile_activity, views, ig_reels_avg_watch_time, ig_reels_video_view_total_time, reels_skip_rate, repost_count, crossposted_views, facebook_views, impressions (deprecated), plays (deprecated), clips_replays_count (deprecated)
       Stories: reach, shares, follows, profile_visits, profile_activity, replies, navigation, total_interactions, views, impressions (deprecated)
+
+  New Reels metrics (Dec 2025):
+    - reels_skip_rate: Percentage of viewers who skip within first 3 seconds
+    - repost_count: Number of reposts of this media
+    - crossposted_views: Total views across Instagram and Facebook (for crossposted content)
+    - facebook_views: Facebook-specific views for crossposted Reels
 
   - breakdown (string, optional): 'action_type' (for profile_activity) or 'story_navigation_action_type' (for navigation)`,
       inputSchema: z
@@ -705,7 +713,7 @@ Args:
           media_id: z.string().describe("Instagram media ID"),
           metrics: z
             .array(z.string())
-            .default(["reach", "likes", "comments", "shares", "saved", "total_interactions"])
+            .default(["reach", "likes", "comments", "shares", "saved", "total_interactions", "repost_count"])
             .describe("Metric names (options depend on media type — see description)"),
           breakdown: z.enum(["action_type", "story_navigation_action_type"]).optional().describe("For profile_activity or navigation metrics"),
           response_format: ResponseFormatSchema,
@@ -1863,6 +1871,201 @@ Returns: Message ID.`,
           content: [{
             type: "text",
             text: `${mediaType} message sent successfully.\n\n- **Message ID**: \`${result.message_id}\`\n- **Recipient**: \`${result.recipient_id ?? recipient_id}\``,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Broadcast Channels ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_instagram_broadcast_channels",
+    {
+      title: "List Instagram Broadcast Channels",
+      description: `Lists broadcast channels for an Instagram professional account.
+
+Broadcast channels enable one-to-many messaging from creators/brands to subscribers.
+
+Args:
+  - ig_account_id (string): Instagram account ID
+
+Returns: Channel IDs, names, descriptions, subscriber counts.`,
+      inputSchema: z
+        .object({
+          ig_account_id: z.string().describe("Instagram account ID"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ig_account_id, response_format }) => {
+      try {
+        const data = await client.get<{ data: Array<{ id: string; name: string; description?: string; subscriber_count?: number; created_time?: string }> }>(
+          `/${ig_account_id}/broadcast_channels`,
+          { fields: "id,name,description,subscriber_count,created_time" }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No broadcast channels found for this account." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Broadcast Channels (${data.data.length})`, ""];
+        for (const ch of data.data) {
+          lines.push(`## ${ch.name} (\`${ch.id}\`)`);
+          if (ch.description) lines.push(`- **Description**: ${truncateField(ch.description, 150)}`);
+          if (ch.subscriber_count !== undefined) lines.push(`- **Subscribers**: ${formatNumber(ch.subscriber_count)}`);
+          if (ch.created_time) lines.push(`- **Created**: ${formatDate(ch.created_time)}`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Broadcast Channel Messages ────────────────────────────────────
+  server.registerTool(
+    "meta_get_broadcast_channel_messages",
+    {
+      title: "Get Broadcast Channel Messages",
+      description: `Gets messages in an Instagram broadcast channel.
+
+Args:
+  - channel_id (string): Broadcast channel ID
+  - limit (number): Max messages (1–100, default 20)
+  - after (string, optional): Pagination cursor
+
+Returns: Paginated list of messages with type, content, and timestamps.`,
+      inputSchema: z
+        .object({
+          channel_id: z.string().describe("Broadcast channel ID"),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional().describe("Pagination cursor"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ channel_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,message,created_time,message_type",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string;
+          message?: string;
+          created_time?: string;
+          message_type?: string;
+        }>>(`/${channel_id}/messages`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No messages in this broadcast channel." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Broadcast Channel Messages (${data.data.length})`, ""];
+        for (const msg of data.data) {
+          lines.push(`## ${msg.message_type ?? "MESSAGE"} \`${msg.id}\``);
+          if (msg.created_time) lines.push(`- **Time**: ${formatDate(msg.created_time)}`);
+          if (msg.message) lines.push(`- **Content**: ${truncateField(msg.message, 200)}`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "broadcast messages") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Send Broadcast Channel Message ────────────────────────────────────
+  server.registerTool(
+    "meta_send_broadcast_channel_message",
+    {
+      title: "Send Broadcast Channel Message",
+      description: `Sends a message to an Instagram broadcast channel.
+
+Args:
+  - channel_id (string): Broadcast channel ID
+  - message (string): Message text to send
+  - link_url (string, optional): Clickable link to include with the message
+
+Returns: Message ID of the sent message.`,
+      inputSchema: z
+        .object({
+          channel_id: z.string().describe("Broadcast channel ID"),
+          message: z.string().min(1).describe("Message text"),
+          link_url: z.string().url().optional().describe("Optional clickable link URL"),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ channel_id, message, link_url }) => {
+      try {
+        const fields: Record<string, unknown> = { message };
+        if (link_url) fields.link_url = link_url;
+
+        const result = await client.post<{ id: string }>(`/${channel_id}/messages`, fields);
+
+        return {
+          content: [{
+            type: "text",
+            text: `Broadcast message sent successfully.\n\n- **Message ID**: \`${result.id}\``,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Broadcast Channel Poll ─────────────────────────────────────
+  server.registerTool(
+    "meta_create_broadcast_channel_poll",
+    {
+      title: "Create Broadcast Channel Poll",
+      description: `Creates a poll in an Instagram broadcast channel.
+
+Args:
+  - channel_id (string): Broadcast channel ID
+  - question (string): Poll question
+  - options (string[]): Poll options (2–4 items)
+
+Returns: Poll/message ID.`,
+      inputSchema: z
+        .object({
+          channel_id: z.string().describe("Broadcast channel ID"),
+          question: z.string().min(1).describe("Poll question"),
+          options: z.array(z.string()).min(2).max(4).describe("Poll options (2–4 items)"),
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ channel_id, question, options }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${channel_id}/messages`, {
+          message_type: "POLL",
+          poll: { question, options },
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: `Poll created successfully.\n\n- **Poll ID**: \`${result.id}\`\n- **Question**: ${question}\n- **Options**: ${options.join(", ")}`,
           }],
         };
       } catch (error) {

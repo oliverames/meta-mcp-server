@@ -1,7 +1,7 @@
 {
   "name": "meta-mcp-server",
-  "version": "1.0.0",
-  "description": "Comprehensive MCP server for Meta Business Suite — Facebook Pages, Instagram, Threads, Ads Manager, Audiences, Insights, and Ad Library (154 tools)",
+  "version": "2.0.0",
+  "description": "The most comprehensive MCP server for Meta Business Suite — 187 tools across Facebook Pages, Instagram, Threads, Ads Manager, Commerce, Conversions API, and more",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

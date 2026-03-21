@@ -207,6 +207,8 @@ Args:
   - stop_time (string, optional): ISO 8601 end date (required for lifetime budget)
   - special_ad_categories (string[], optional): Required for housing, employment, credit ads
 
+Note: For OUTCOME_SALES objective, Advantage+ Shopping campaigns are available. These use Meta's AI to optimize targeting and placements automatically. Create a standard campaign first, then use meta_migrate_campaign_to_advantage_plus to convert it.
+
 Returns the new campaign ID.`,
       inputSchema: z
         .object({
@@ -282,12 +284,15 @@ Returns the new campaign ID.`,
       title: "Update Campaign",
       description: `Updates an existing campaign. Only provided fields are changed.
 
+Can also migrate a campaign to Advantage+ Shopping by setting migrate_to_advantage_plus to true.
+
 Args:
   - campaign_id (string): Campaign ID to update
   - name (string, optional): New campaign name
   - status (string, optional): ACTIVE, PAUSED, or ARCHIVED
   - daily_budget (number, optional): New daily budget in cents
-  - lifetime_budget (number, optional): New lifetime budget in cents`,
+  - lifetime_budget (number, optional): New lifetime budget in cents
+  - migrate_to_advantage_plus (boolean, optional): Migrate this campaign to Advantage+ Shopping (keeps original campaign ID)`,
       inputSchema: z
         .object({
           campaign_id: z.string().describe("Campaign ID"),
@@ -295,6 +300,7 @@ Args:
           status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
           daily_budget: z.number().int().positive().optional(),
           lifetime_budget: z.number().int().positive().optional(),
+          migrate_to_advantage_plus: z.boolean().optional().describe("Migrate this campaign to Advantage+ Shopping (keeps original campaign ID)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -305,13 +311,14 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ campaign_id, name, status, daily_budget, lifetime_budget, response_format }) => {
+    async ({ campaign_id, name, status, daily_budget, lifetime_budget, migrate_to_advantage_plus, response_format }) => {
       try {
         const fields: Record<string, unknown> = {};
         if (name) fields.name = name;
         if (status) fields.status = status;
         if (daily_budget) fields.daily_budget = daily_budget;
         if (lifetime_budget) fields.lifetime_budget = lifetime_budget;
+        if (migrate_to_advantage_plus !== undefined) fields.migrate_to_advantage_plus = migrate_to_advantage_plus;
 
         const result = await client.post<{ success: boolean }>(`/${campaign_id}`, fields);
 
@@ -364,6 +371,58 @@ Args:
               text: result.success
                 ? `Campaign \`${campaign_id}\` deleted successfully.`
                 : `Failed to delete campaign \`${campaign_id}\`.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Migrate Campaign to Advantage+ ──────────────────────────────────────
+  server.registerTool(
+    "meta_migrate_campaign_to_advantage_plus",
+    {
+      title: "Migrate Campaign to Advantage+",
+      description: `Migrates an existing campaign to Advantage+ Shopping (formerly ASC).
+
+Advantage+ Shopping campaigns use Meta's AI to automatically optimize targeting, placements, and creative delivery for online sales. After migration, Meta handles audience selection and budget allocation across placements for better ROAS.
+
+The campaign keeps its original ID — this is an in-place conversion, not a new campaign.
+
+Args:
+  - campaign_id (string): Campaign ID to migrate
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)`,
+      inputSchema: z
+        .object({
+          campaign_id: z.string().describe("Campaign ID to migrate"),
+          ad_account_id: z.string().describe("Ad account ID (e.g., act_123456789)"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ campaign_id, ad_account_id, response_format }) => {
+      try {
+        const result = await client.post<{ success: boolean }>(`/${campaign_id}`, {
+          migrate_to_advantage_plus: true,
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify({ success: true, campaign_id, ad_account_id }, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Campaign \`${campaign_id}\` migrated to Advantage+ Shopping successfully.\n\n- **Campaign ID**: \`${campaign_id}\` (unchanged)\n- **Ad Account**: \`${ad_account_id}\`\n\nThe campaign now uses Meta's AI for automated targeting, placements, and creative optimization.`,
             },
           ],
         };
@@ -473,6 +532,7 @@ Args:
   - start_time (string, optional): ISO 8601 start time
   - end_time (string, optional): ISO 8601 end time (required with lifetime_budget)
   - status (string): ACTIVE or PAUSED (default PAUSED)
+  - placement_soft_opt_out (string[], optional): Placements to soft opt-out (up to 5% spend may still go to these). Only for Sales/Leads objectives.
 
 Returns the new ad set ID.`,
       inputSchema: z
@@ -504,6 +564,7 @@ Returns the new ad set ID.`,
           start_time: z.string().optional(),
           end_time: z.string().optional(),
           status: z.enum(["ACTIVE", "PAUSED"]).default("PAUSED"),
+          placement_soft_opt_out: z.array(z.string()).optional().describe("Placements to soft opt-out (up to 5% spend may still go to these for better performance). Only for Sales/Leads objectives."),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -514,7 +575,7 @@ Returns the new ad set ID.`,
         openWorldHint: false,
       },
     },
-    async ({ ad_account_id, campaign_id, name, daily_budget, lifetime_budget, billing_event, optimization_goal, targeting, start_time, end_time, status, response_format }) => {
+    async ({ ad_account_id, campaign_id, name, daily_budget, lifetime_budget, billing_event, optimization_goal, targeting, start_time, end_time, status, placement_soft_opt_out, response_format }) => {
       try {
         const fields: Record<string, unknown> = {
           campaign_id,
@@ -528,6 +589,7 @@ Returns the new ad set ID.`,
         if (lifetime_budget) fields.lifetime_budget = lifetime_budget;
         if (start_time) fields.start_time = start_time;
         if (end_time) fields.end_time = end_time;
+        if (placement_soft_opt_out) fields.placement_soft_opt_out = placement_soft_opt_out;
 
         const result = await client.post<{ id: string }>(
           `/${ad_account_id}/adsets`,
@@ -564,7 +626,8 @@ Args:
   - name (string, optional): New name
   - status (string, optional): ACTIVE, PAUSED, or ARCHIVED
   - daily_budget (number, optional): New daily budget in cents
-  - end_time (string, optional): New end time ISO 8601`,
+  - end_time (string, optional): New end time ISO 8601
+  - placement_soft_opt_out (string[], optional): Placements to soft opt-out (up to 5% spend may still go to these). Only for Sales/Leads objectives.`,
       inputSchema: z
         .object({
           adset_id: z.string(),
@@ -572,6 +635,7 @@ Args:
           status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
           daily_budget: z.number().int().positive().optional(),
           end_time: z.string().optional(),
+          placement_soft_opt_out: z.array(z.string()).optional().describe("Placements to soft opt-out (up to 5% spend may still go to these for better performance). Only for Sales/Leads objectives."),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -582,13 +646,14 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ adset_id, name, status, daily_budget, end_time, response_format }) => {
+    async ({ adset_id, name, status, daily_budget, end_time, placement_soft_opt_out, response_format }) => {
       try {
         const fields: Record<string, unknown> = {};
         if (name) fields.name = name;
         if (status) fields.status = status;
         if (daily_budget) fields.daily_budget = daily_budget;
         if (end_time) fields.end_time = end_time;
+        if (placement_soft_opt_out) fields.placement_soft_opt_out = placement_soft_opt_out;
 
         await client.post(`/${adset_id}`, fields);
 

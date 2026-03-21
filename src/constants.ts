@@ -41,7 +41,7 @@ export const THREADS_PROFILE_FIELDS =
   "id,username,name,threads_profile_picture_url,threads_biography";
 
 export const THREADS_MEDIA_FIELDS =
-  "id,media_product_type,media_type,media_url,permalink,username,text,timestamp,shortcode,thumbnail_url,children,is_quote_post";
+  "id,media_product_type,media_type,media_url,permalink,username,text,timestamp,shortcode,thumbnail_url,children,is_quote_post,reply_audience";
 
 export const AD_LIBRARY_FIELDS =
   "id,ad_creation_time,ad_creative_bodies,ad_creative_link_captions,ad_creative_link_descriptions,ad_creative_link_titles,ad_delivery_start_time,ad_delivery_stop_time,ad_snapshot_url,bylines,currency,delivery_by_region,demographic_distribution,estimated_audience_size,impressions,languages,page_id,page_name,publisher_platforms,spend,target_ages,target_gender,target_locations";

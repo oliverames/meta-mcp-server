@@ -144,6 +144,8 @@ Returns: Media ID of the published thread.`,
           text: z.string().min(1).max(500).describe("Post text"),
           reply_to_id: z.string().optional().describe("Thread ID to reply to"),
           quote_post_id: z.string().optional().describe("Thread ID to quote"),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
+          location_id: z.string().optional().describe("Location ID to tag (from Facebook Places search)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -154,11 +156,13 @@ Returns: Media ID of the published thread.`,
         openWorldHint: false,
       },
     },
-    async ({ threads_user_id, text, reply_to_id, quote_post_id, response_format }) => {
+    async ({ threads_user_id, text, reply_to_id, quote_post_id, reply_control, location_id, response_format }) => {
       try {
         const fields: Record<string, unknown> = { media_type: "TEXT", text };
         if (reply_to_id) fields.reply_to_id = reply_to_id;
         if (quote_post_id) fields.quote_post_id = quote_post_id;
+        if (reply_control) fields.reply_control = reply_control;
+        if (location_id) fields.location_id = location_id;
 
         const container = await client.threadsPost<{ id: string }>(
           `/${threads_user_id}/threads`,
@@ -199,6 +203,8 @@ Args:
           threads_user_id: z.string(),
           image_url: z.string().url().describe("Public image URL"),
           text: z.string().optional().describe("Caption text"),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
+          location_id: z.string().optional().describe("Location ID to tag (from Facebook Places search)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -209,10 +215,12 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ threads_user_id, image_url, text, response_format }) => {
+    async ({ threads_user_id, image_url, text, reply_control, location_id, response_format }) => {
       try {
         const fields: Record<string, unknown> = { media_type: "IMAGE", image_url };
         if (text) fields.text = text;
+        if (reply_control) fields.reply_control = reply_control;
+        if (location_id) fields.location_id = location_id;
 
         const container = await client.threadsPost<{ id: string }>(
           `/${threads_user_id}/threads`,
@@ -255,6 +263,8 @@ Note: Video processing may take time. Polls for up to 60 seconds.`,
           threads_user_id: z.string(),
           video_url: z.string().url().describe("Public video URL"),
           text: z.string().optional(),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
+          location_id: z.string().optional().describe("Location ID to tag (from Facebook Places search)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -265,10 +275,12 @@ Note: Video processing may take time. Polls for up to 60 seconds.`,
         openWorldHint: false,
       },
     },
-    async ({ threads_user_id, video_url, text, response_format }) => {
+    async ({ threads_user_id, video_url, text, reply_control, location_id, response_format }) => {
       try {
         const fields: Record<string, unknown> = { media_type: "VIDEO", video_url };
         if (text) fields.text = text;
+        if (reply_control) fields.reply_control = reply_control;
+        if (location_id) fields.location_id = location_id;
 
         const container = await client.threadsPost<{ id: string }>(
           `/${threads_user_id}/threads`,
@@ -334,6 +346,7 @@ Args:
             .min(2)
             .max(20),
           text: z.string().optional(),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -344,7 +357,7 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ threads_user_id, items, text, response_format }) => {
+    async ({ threads_user_id, items, text, reply_control, response_format }) => {
       try {
         // Step 1: Create all item containers in parallel
         const results = await Promise.allSettled(
@@ -400,6 +413,7 @@ Args:
           children: containerIds.join(","),
         };
         if (text) carouselFields.text = text;
+        if (reply_control) carouselFields.reply_control = reply_control;
 
         const carousel = await client.threadsPost<{ id: string }>(
           `/${threads_user_id}/threads`,
@@ -1002,6 +1016,70 @@ Note: Results are limited to the authenticated user's content and public threads
     }
   );
 
+  // ─── Publish GIF Thread ────────────────────────────────────────────────
+  server.registerTool(
+    "threads_publish_gif",
+    {
+      title: "Publish GIF Thread",
+      description: `Publishes a GIF post to Threads using a GIPHY URL.
+
+Two-step flow: creates a container, then publishes it.
+
+Args:
+  - threads_user_id (string): Threads user ID
+  - gif_url (string): GIPHY URL of the GIF
+  - text (string, optional): Caption text
+  - reply_to_id (string, optional): Thread ID to reply to
+  - reply_control (enum, optional): Who can reply — everyone, accounts_you_follow, or mentioned_only
+
+Returns: Media ID of the published thread.`,
+      inputSchema: z
+        .object({
+          threads_user_id: z.string(),
+          gif_url: z.string().url().describe("GIPHY URL of the GIF"),
+          text: z.string().optional().describe("Caption text"),
+          reply_to_id: z.string().optional().describe("Thread ID to reply to"),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ threads_user_id, gif_url, text, reply_to_id, reply_control, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = { media_type: "IMAGE", image_url: gif_url };
+        if (text) fields.text = text;
+        if (reply_to_id) fields.reply_to_id = reply_to_id;
+        if (reply_control) fields.reply_control = reply_control;
+
+        const container = await client.threadsPost<{ id: string }>(
+          `/${threads_user_id}/threads`,
+          fields
+        );
+
+        const result = await client.threadsPost<{ id: string }>(
+          `/${threads_user_id}/threads_publish`,
+          { creation_id: container.id }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{ type: "text", text: `GIF thread published.\n\n- **Media ID**: \`${result.id}\`` }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
   // ─── Publish Link Thread ───────────────────────────────────────────────
   server.registerTool(
     "threads_publish_link",
@@ -1018,16 +1096,20 @@ Args:
           threads_user_id: z.string(),
           text: z.string().min(1),
           link_attachment: z.string().url().describe("URL for link preview"),
+          reply_control: z.enum(["everyone", "accounts_you_follow", "mentioned_only"]).optional().describe("Who can reply to this post"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ threads_user_id, text, link_attachment, response_format }) => {
+    async ({ threads_user_id, text, link_attachment, reply_control, response_format }) => {
       try {
+        const fields: Record<string, unknown> = { media_type: "TEXT", text, link_attachment };
+        if (reply_control) fields.reply_control = reply_control;
+
         const container = await client.threadsPost<{ id: string }>(
           `/${threads_user_id}/threads`,
-          { media_type: "TEXT", text, link_attachment }
+          fields
         );
 
         const result = await client.threadsPost<{ id: string }>(
