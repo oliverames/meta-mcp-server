@@ -89,7 +89,7 @@ describe("MCP Server Integration", () => {
     const tools = (response as any).result?.tools;
     expect(tools).toBeDefined();
     expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBe(154);
+    expect(tools.length).toBe(160);
 
     // Verify key tools exist
     const names = tools.map((t: any) => t.name);
