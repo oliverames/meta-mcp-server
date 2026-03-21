@@ -300,7 +300,7 @@ Threads uses a separate OAuth flow via `graph.threads.net`:
 ### 4. Install & Build
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/meta-mcp-server.git
+git clone https://github.com/oliverames/meta-mcp-server.git
 cd meta-mcp-server
 npm install
 npm run build
