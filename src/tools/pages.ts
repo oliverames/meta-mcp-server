@@ -835,6 +835,9 @@ Args:
   - phone (string, optional): Phone number
   - emails (string[], optional): Contact emails
   - hours (object, optional): Business hours as key-value pairs (e.g., {"mon_1_open":"09:00","mon_1_close":"17:00"})
+  - category (string, optional): Page category (e.g., "Restaurant")
+  - username (string, optional): Page username/vanity URL
+  - contact_address (object, optional): Mailing address with street, city, state, zip, country
 
 Requires pages_manage_metadata permission.`,
       inputSchema: z
@@ -846,6 +849,15 @@ Requires pages_manage_metadata permission.`,
           phone: z.string().optional(),
           emails: z.array(z.string().email()).optional(),
           hours: z.record(z.string()).optional().describe("Business hours key-value pairs"),
+          category: z.string().optional().describe("Page category"),
+          username: z.string().optional().describe("Page vanity URL/username"),
+          contact_address: z.object({
+            street: z.string().optional(),
+            city: z.string().optional(),
+            state: z.string().optional(),
+            zip: z.string().optional(),
+            country: z.string().optional(),
+          }).optional().describe("Mailing/contact address"),
         })
         .strict(),
       annotations: {
@@ -855,7 +867,7 @@ Requires pages_manage_metadata permission.`,
         openWorldHint: false,
       },
     },
-    async ({ page_id, about, description, website, phone, emails, hours }) => {
+    async ({ page_id, about, description, website, phone, emails, hours, category, username, contact_address }) => {
       try {
         const pageToken = client.requirePageToken(page_id);
         const fields: Record<string, unknown> = {};
@@ -865,6 +877,9 @@ Requires pages_manage_metadata permission.`,
         if (phone !== undefined) fields.phone = phone;
         if (emails !== undefined) fields.emails = emails;
         if (hours !== undefined) fields.hours = hours;
+        if (category !== undefined) fields.category = category;
+        if (username !== undefined) fields.username = username;
+        if (contact_address !== undefined) fields.contact_address = contact_address;
 
         if (Object.keys(fields).length === 0) {
           return { content: [{ type: "text", text: "Error: Provide at least one field to update." }], isError: true };
@@ -2283,6 +2298,157 @@ Args:
           lines.push(`- \`${post.id}\` — ${formatDate(post.created_time)}${post.message ? ` | ${truncateField(post.message, 80)}` : ""}`);
         }
         return { content: [{ type: "text", text: truncate(lines.join("\n"), "promotable posts") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Update Page Profile Picture ────────────────────────────────────────
+  server.registerTool(
+    "meta_update_page_picture",
+    {
+      title: "Update Facebook Page Profile Picture",
+      description: `Updates a Facebook Page's profile picture.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - picture_url (string): URL of the new profile picture
+
+Requires pages_manage_metadata permission.`,
+      inputSchema: z
+        .object({
+          page_id: z.string(),
+          picture_url: z.string().url().describe("URL of the new profile picture image"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, picture_url, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<{ success?: boolean; id?: string }>(
+          `/${page_id}/picture`,
+          { picture: picture_url },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{ type: "text", text: `Profile picture updated for page \`${page_id}\`.` }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Update Page Cover Photo ────────────────────────────────────────────
+  server.registerTool(
+    "meta_update_page_cover",
+    {
+      title: "Update Facebook Page Cover Photo",
+      description: `Updates a Facebook Page's cover photo.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - cover_url (string, optional): URL of the new cover photo
+  - photo_id (string, optional): ID of an existing photo to use as cover
+  - offset_y (number, optional): Vertical offset of the cover photo (0–100)
+  - no_feed_story (boolean, optional): If true, don't publish a feed story about the change
+
+Provide either cover_url or photo_id. Requires pages_manage_metadata permission.`,
+      inputSchema: z
+        .object({
+          page_id: z.string(),
+          cover_url: z.string().url().optional().describe("URL of the new cover photo"),
+          photo_id: z.string().optional().describe("ID of existing photo to use as cover"),
+          offset_y: z.number().min(0).max(100).optional().describe("Vertical offset (0–100)"),
+          no_feed_story: z.boolean().optional().describe("Suppress feed story about the change"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, cover_url, photo_id, offset_y, no_feed_story, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const fields: Record<string, unknown> = {};
+        if (cover_url) fields.source = cover_url;
+        if (photo_id) fields.photo = photo_id;
+        if (offset_y !== undefined) fields.offset_y = offset_y;
+        if (no_feed_story !== undefined) fields.no_feed_story = no_feed_story;
+
+        if (!cover_url && !photo_id) {
+          return { content: [{ type: "text", text: "Error: Provide either cover_url or photo_id." }], isError: true };
+        }
+
+        const result = await client.post<{ id?: string }>(`/${page_id}`, { cover: fields }, pageToken);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{ type: "text", text: `Cover photo updated for page \`${page_id}\`.` }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Hide/Unhide Comment ────────────────────────────────────────────────
+  server.registerTool(
+    "meta_hide_comment",
+    {
+      title: "Hide or Unhide a Facebook Comment",
+      description: `Hides or unhides a comment on a Facebook Page post.
+
+Hidden comments are only visible to the comment author and their friends.
+This is a non-destructive alternative to deletion — useful for moderation.
+
+Args:
+  - comment_id (string): Comment ID to hide/unhide
+  - page_id (string): Page ID (for authentication)
+  - is_hidden (boolean): true to hide, false to unhide
+
+Requires pages_manage_engagement permission.`,
+      inputSchema: z
+        .object({
+          comment_id: z.string(),
+          page_id: z.string().describe("Page ID (for auth)"),
+          is_hidden: z.boolean().describe("true to hide, false to unhide"),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ comment_id, page_id, is_hidden }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        await client.post(`/${comment_id}`, { is_hidden }, pageToken);
+        return {
+          content: [{ type: "text", text: `Comment \`${comment_id}\` ${is_hidden ? "hidden" : "unhidden"} successfully.` }],
+        };
       } catch (error) {
         return errorResult(error);
       }
