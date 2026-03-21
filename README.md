@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/oliverames/meta-mcp-server/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>&nbsp;
-  <img src="https://img.shields.io/badge/tools-140-6C47FF?style=flat-square" alt="140 Tools">&nbsp;
+  <img src="https://img.shields.io/badge/tools-144-6C47FF?style=flat-square" alt="144 Tools">&nbsp;
   <img src="https://img.shields.io/badge/tests-52_passing-34D058?style=flat-square" alt="52 Tests Passing">&nbsp;
   <img src="https://img.shields.io/badge/Graph_API-v21.0-1877F2?style=flat-square" alt="Graph API v21.0">&nbsp;
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
@@ -26,7 +26,7 @@
 <br>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#what-you-can-do">What You Can Do</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#complete-tool-reference">All 140 Tools</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#configuration">Configuration</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#architecture">Architecture</a>
+  <a href="#quick-start">Quick Start</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#what-you-can-do">What You Can Do</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#complete-tool-reference">All 144 Tools</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#configuration">Configuration</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#architecture">Architecture</a>
 </p>
 
 <br>
@@ -59,7 +59,7 @@ Add to your MCP client config:
 }
 ```
 
-That's it. Your AI assistant now has access to 140 Meta tools.
+That's it. Your AI assistant now has access to 144 Meta tools.
 
 > Need a token? Go to the [Graph API Explorer](https://developers.facebook.com/tools/explorer), select your app, and generate one. See [Configuration](#configuration) for details.
 
@@ -165,7 +165,7 @@ Debug tokens, check permissions, monitor rate limits, and verify API connectivit
 
 ## Complete Tool Reference
 
-### Facebook Pages — 38 tools
+### Facebook Pages — 42 tools
 
 Everything a brand needs to manage their Facebook presence.
 
@@ -209,6 +209,10 @@ Everything a brand needs to manage their Facebook presence.
 | `meta_get_blocked_users` | List blocked users |
 | `meta_block_user` | Block or unblock a user |
 | `meta_subscribe_page_webhooks` | Subscribe the page to webhook events |
+| `meta_get_post_insights` | Per-post analytics (impressions, engagement, clicks, reactions, video) |
+| `meta_update_page_picture` | Update page profile picture from URL |
+| `meta_update_page_cover` | Update page cover photo from URL or existing photo |
+| `meta_hide_comment` | Hide or unhide a comment (non-destructive moderation) |
 
 ### Instagram — 26 tools
 
@@ -481,7 +485,7 @@ src/
 │   ├── api.ts            MetaApiClient — dual Graph + Threads API
 │   └── utils.ts          Error handling, formatting, shared schemas
 └── tools/
-    ├── pages.ts          38 Facebook Page tools
+    ├── pages.ts          42 Facebook Page tools
     ├── instagram.ts      26 Instagram tools
     ├── ads.ts            45 Ads Manager tools
     ├── threads.ts        19 Threads tools
