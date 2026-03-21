@@ -9,6 +9,7 @@ import { registerInsightsTools } from "./tools/insights.js";
 import { registerThreadsTools } from "./tools/threads.js";
 import { registerAdLibraryTools } from "./tools/ad_library.js";
 import { registerUtilityTools } from "./tools/utility.js";
+import { registerChartTools } from "./tools/charts.js";
 
 const token = process.env.META_ACCESS_TOKEN ?? "";
 const threadsToken = process.env.THREADS_ACCESS_TOKEN;
@@ -28,6 +29,7 @@ registerInsightsTools(server, client);
 registerThreadsTools(server, client);
 registerAdLibraryTools(server, client);
 registerUtilityTools(server, client);
+registerChartTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
