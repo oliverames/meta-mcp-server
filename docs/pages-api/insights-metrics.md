@@ -126,6 +126,72 @@ Source: Meta Graph API v21.0 — /{page_id}/insights endpoint
 | `page_daily_video_ad_break_cpm_by_crosspost_status` | Ad break CPM | day |
 | `page_daily_video_ad_break_earnings_by_crosspost_status` | Ad break earnings | day |
 
+## Post-Level Insights (`/{post_id}/insights`)
+
+All post metrics use `lifetime` period (cumulative from creation).
+
+### Post Performance
+
+| Metric | Description |
+|---|---|
+| `post_impressions` | Total times post entered a person's screen |
+| `post_impressions_unique` | Unique people who saw the post (estimated) |
+| `post_impressions_paid` | Paid impressions |
+| `post_impressions_paid_unique` | Unique paid impressions |
+| `post_impressions_fan` | Impressions from fans/followers |
+| `post_impressions_fan_unique` | Unique impressions from fans |
+| `post_impressions_organic` | Organic impressions |
+| `post_impressions_organic_unique` | Unique organic impressions |
+| `post_impressions_viral` | Viral impressions (shared content) |
+| `post_impressions_viral_unique` | Unique viral impressions |
+| `post_impressions_nonviral` | Non-viral impressions |
+| `post_impressions_nonviral_unique` | Unique non-viral impressions |
+
+### Post Engagement
+
+| Metric | Description |
+|---|---|
+| `post_engaged_users` | People who clicked on post |
+| `post_engaged_fan` | Engaged fans |
+| `post_clicks` | Total clicks (no story generated) |
+| `post_clicks_by_type` | Clicks by type (link, photo, video, other) |
+| `post_negative_feedback` | Hides, spam reports |
+| `post_negative_feedback_by_type` | Negative feedback by type |
+
+### Post Reactions
+
+| Metric | Description |
+|---|---|
+| `post_reactions_by_type_total` | All reactions broken down by type |
+| `post_reactions_like_total` | Like reactions (includes care) |
+| `post_reactions_love_total` | Love reactions |
+| `post_reactions_wow_total` | Wow reactions |
+| `post_reactions_haha_total` | Haha reactions |
+| `post_reactions_sorry_total` | Sad reactions |
+| `post_reactions_anger_total` | Angry reactions |
+
+### Post Media & Video
+
+| Metric | Description |
+|---|---|
+| `post_media_view` | Times content was played/displayed |
+| `post_total_media_view_unique` | Unique media viewers |
+| `post_video_avg_time_watched` | Average video watch time |
+| `post_video_complete_views_organic` | Organic complete video views |
+| `post_video_complete_views_paid` | Paid complete video views |
+| `post_video_views_organic` | Organic video views (3s+) |
+| `post_video_views_paid` | Paid video views (3s+) |
+| `post_video_view_time` | Total video watch time (ms) |
+
+### Post Activity
+
+| Metric | Description |
+|---|---|
+| `post_activity_by_action_type` | Stories created about post by action type |
+| `post_activity_by_action_type_unique` | Unique people who created stories |
+
+---
+
 ## Notes
 
 - Metrics marked with `*` in Meta's docs are deprecated or may require special access

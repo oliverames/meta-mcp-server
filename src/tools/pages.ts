@@ -735,6 +735,91 @@ Returns: Time-series data for each metric.`,
     }
   );
 
+  // ─── Get Post Insights ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_post_insights",
+    {
+      title: "Get Facebook Post Insights",
+      description: `Gets performance metrics for a specific Facebook Page post.
+
+Requires: meta_list_pages called first.
+
+Args:
+  - post_id (string): Post ID (e.g., "page_id_post_id")
+  - page_id (string): Page ID (for authentication)
+  - metrics (string[]): Metrics to retrieve. Options:
+      Performance: post_impressions, post_impressions_unique, post_impressions_paid, post_impressions_paid_unique, post_impressions_fan, post_impressions_fan_unique, post_impressions_organic, post_impressions_organic_unique, post_impressions_viral, post_impressions_viral_unique
+      Engagement: post_clicks, post_clicks_by_type, post_engaged_users, post_negative_feedback, post_negative_feedback_by_type, post_engaged_fan
+      Reactions: post_reactions_by_type_total, post_reactions_like_total, post_reactions_love_total, post_reactions_wow_total, post_reactions_haha_total, post_reactions_sorry_total, post_reactions_anger_total
+      Media: post_media_view, post_total_media_view_unique
+      Video: post_video_avg_time_watched, post_video_complete_views_organic, post_video_complete_views_paid, post_video_views_organic, post_video_views_paid, post_video_view_time
+      Activity: post_activity_by_action_type, post_activity_by_action_type_unique
+
+All post metrics use 'lifetime' period (cumulative from post creation).`,
+      inputSchema: z
+        .object({
+          post_id: z.string().describe("Post ID"),
+          page_id: z.string().describe("Page ID (for auth)"),
+          metrics: z
+            .array(z.string())
+            .default([
+              "post_impressions",
+              "post_impressions_unique",
+              "post_impressions_paid",
+              "post_impressions_organic",
+              "post_engaged_users",
+              "post_clicks",
+              "post_reactions_by_type_total",
+              "post_negative_feedback",
+            ])
+            .describe("Metric names — see description for full list"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ post_id, page_id, metrics, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const data = await client.getWithToken<{ data: unknown[] }>(
+          `/${post_id}/insights`,
+          pageToken,
+          { metric: metrics.join(",") }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Post Insights: \`${post_id}\``, ""];
+        for (const item of data.data as Array<{
+          name: string;
+          title: string;
+          period: string;
+          values: Array<{ value: number | Record<string, number> }>;
+        }>) {
+          const val = item.values?.[0]?.value;
+          if (typeof val === "object" && val !== null) {
+            lines.push(`## ${item.title ?? item.name}`);
+            for (const [k, v] of Object.entries(val)) {
+              lines.push(`- ${k}: **${formatNumber(v)}**`);
+            }
+          } else {
+            lines.push(`- **${item.title ?? item.name}**: ${formatNumber(val as number)}`);
+          }
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
   // ─── Update Page Settings ──────────────────────────────────────────────
   server.registerTool(
     "meta_update_page",

@@ -78,7 +78,7 @@ describe("MCP Server Integration", () => {
     expect((response as any).result.capabilities.tools).toBeDefined();
   });
 
-  it("lists all 140 tools via tools/list", async () => {
+  it("lists all 141 tools via tools/list", async () => {
     const response = await sendMcpRequest({
       jsonrpc: "2.0",
       id: 1,
@@ -89,7 +89,7 @@ describe("MCP Server Integration", () => {
     const tools = (response as any).result?.tools;
     expect(tools).toBeDefined();
     expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBe(140);
+    expect(tools.length).toBe(141);
 
     // Verify key tools exist
     const names = tools.map((t: any) => t.name);
