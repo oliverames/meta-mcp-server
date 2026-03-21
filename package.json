@@ -12,6 +12,24 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oliverames/meta-mcp-server.git"
+  },
+  "license": "MIT",
+  "author": "Oliver Ames",
+  "keywords": [
+    "mcp",
+    "meta",
+    "facebook",
+    "instagram",
+    "threads",
+    "ads-manager",
+    "graph-api",
+    "model-context-protocol",
+    "claude",
+    "ai-tools"
+  ],
   "engines": {
     "node": ">=18"
   },
