@@ -1,0 +1,2319 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { MetaApiClient } from "../services/api.js";
+import { errorResult, truncate, truncateField, formatNumber, formatDate, formatBudget, buildPaginationNote, ResponseFormatSchema } from "../services/utils.js";
+import { AD_ACCOUNT_FIELDS, CAMPAIGN_FIELDS, ADSET_FIELDS, AD_FIELDS, CREATIVE_FIELDS } from "../constants.js";
+import { AdAccount, Campaign, AdSet, Ad, AdCreative, MetaPaginatedResponse } from "../types.js";
+
+export function registerAdsTools(server: McpServer, client: MetaApiClient): void {
+  // ─── List Ad Accounts ─────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_accounts",
+    {
+      title: "List Meta Ad Accounts",
+      description: `Lists all Meta ad accounts accessible to the authenticated user.
+
+Returns ad account IDs (prefixed with act_), names, currency, status, and spend info.
+
+Call this first to get ad account IDs needed for campaign and insights tools.`,
+      inputSchema: z
+        .object({ response_format: ResponseFormatSchema })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<AdAccount>>("/me/adaccounts", {
+          fields: AD_ACCOUNT_FIELDS,
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad accounts found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# Meta Ad Accounts (${data.data.length})`, ""];
+        for (const acct of data.data) {
+          lines.push(`## ${acct.name ?? "Unnamed"} (\`${acct.id}\`)`);
+          lines.push(`- **Account ID**: \`${acct.account_id ?? acct.id}\``);
+          lines.push(`- **Status**: ${acct.account_status}`);
+          lines.push(`- **Currency**: ${acct.currency ?? "N/A"}`);
+          lines.push(`- **Timezone**: ${acct.timezone_name ?? "N/A"}`);
+          if (acct.amount_spent) lines.push(`- **Total Spent**: ${formatNumber(acct.amount_spent)} ${acct.currency ?? ""} (in cents)`);
+          if (acct.balance) lines.push(`- **Balance**: ${formatNumber(acct.balance)} ${acct.currency ?? ""} (in cents)`);
+          if (acct.business) lines.push(`- **Business**: ${acct.business.name} (\`${acct.business.id}\`)`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "ad accounts") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Campaigns ───────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_campaigns",
+    {
+      title: "List Campaigns",
+      description: `Lists campaigns for a Meta ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - status_filter (string[], optional): Filter by status: ACTIVE, PAUSED, ARCHIVED, DELETED
+  - limit (number): Max results (1–100, default 20)
+  - after (string, optional): Pagination cursor
+
+Returns campaign names, objectives, status, and budget info.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string().describe("Ad account ID (e.g., act_123456789)"),
+          status_filter: z
+            .array(z.enum(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]))
+            .optional()
+            .describe("Filter by effective status"),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional().describe("Pagination cursor"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, status_filter, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = { fields: CAMPAIGN_FIELDS, limit };
+        if (status_filter?.length) params.effective_status = JSON.stringify(status_filter);
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<Campaign>>(
+          `/${ad_account_id}/campaigns`,
+          params
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No campaigns found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Campaigns for \`${ad_account_id}\` (${data.data.length} shown)`, ""];
+        for (const c of data.data) {
+          lines.push(`## ${c.name} (\`${c.id}\`)`);
+          lines.push(`- **Objective**: ${c.objective ?? "N/A"}`);
+          lines.push(`- **Status**: ${c.effective_status ?? c.status}`);
+          if (c.daily_budget || c.lifetime_budget) {
+            lines.push(`- **Budget**: ${formatBudget(c.daily_budget, c.lifetime_budget)}`);
+          }
+          if (c.budget_remaining) lines.push(`- **Remaining**: ${formatNumber(c.budget_remaining)} cents`);
+          if (c.start_time) lines.push(`- **Start**: ${formatDate(c.start_time)}`);
+          if (c.stop_time) lines.push(`- **End**: ${formatDate(c.stop_time)}`);
+          lines.push(`- **Created**: ${formatDate(c.created_time)}`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "campaigns") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Campaign ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_campaign",
+    {
+      title: "Get Campaign Details",
+      description: `Gets detailed information about a specific campaign.
+
+Args:
+  - campaign_id (string): Campaign ID`,
+      inputSchema: z
+        .object({
+          campaign_id: z.string().describe("Campaign ID"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ campaign_id, response_format }) => {
+      try {
+        const c = await client.get<Campaign>(`/${campaign_id}`, { fields: CAMPAIGN_FIELDS });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(c, null, 2) }] };
+        }
+
+        const lines = [
+          `# Campaign: ${c.name}`,
+          "",
+          `- **ID**: \`${c.id}\``,
+          `- **Objective**: ${c.objective ?? "N/A"}`,
+          `- **Status**: ${c.effective_status ?? c.status}`,
+          c.daily_budget || c.lifetime_budget
+            ? `- **Budget**: ${formatBudget(c.daily_budget, c.lifetime_budget)}`
+            : "",
+          c.budget_remaining ? `- **Remaining**: ${formatNumber(c.budget_remaining)} cents` : "",
+          c.start_time ? `- **Start**: ${formatDate(c.start_time)}` : "",
+          c.stop_time ? `- **End**: ${formatDate(c.stop_time)}` : "",
+          `- **Created**: ${formatDate(c.created_time)}`,
+          `- **Updated**: ${formatDate(c.updated_time)}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return { content: [{ type: "text", text: lines }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Campaign ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_campaign",
+    {
+      title: "Create Campaign",
+      description: `Creates a new campaign in a Meta ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - name (string): Campaign name
+  - objective (string): Campaign objective. Common values:
+      OUTCOME_AWARENESS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT,
+      OUTCOME_LEADS, OUTCOME_APP_PROMOTION, OUTCOME_SALES
+  - status (string): ACTIVE or PAUSED (default PAUSED)
+  - daily_budget (number, optional): Daily budget in account currency cents
+  - lifetime_budget (number, optional): Lifetime budget in cents (requires stop_time)
+  - stop_time (string, optional): ISO 8601 end date (required for lifetime budget)
+  - special_ad_categories (string[], optional): Required for housing, employment, credit ads
+
+Returns the new campaign ID.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string().describe("Ad account ID (e.g., act_123456789)"),
+          name: z.string().min(1).describe("Campaign name"),
+          objective: z
+            .enum([
+              "OUTCOME_AWARENESS",
+              "OUTCOME_TRAFFIC",
+              "OUTCOME_ENGAGEMENT",
+              "OUTCOME_LEADS",
+              "OUTCOME_APP_PROMOTION",
+              "OUTCOME_SALES",
+            ])
+            .describe("Campaign objective"),
+          status: z.enum(["ACTIVE", "PAUSED"]).default("PAUSED"),
+          daily_budget: z.number().int().positive().optional().describe("Daily budget in cents"),
+          lifetime_budget: z.number().int().positive().optional().describe("Lifetime budget in cents"),
+          stop_time: z.string().optional().describe("End datetime ISO 8601 (required with lifetime_budget)"),
+          special_ad_categories: z
+            .array(z.enum(["HOUSING", "EMPLOYMENT", "CREDIT", "ISSUES_ELECTIONS_POLITICS", "NONE"]))
+            .default(["NONE"])
+            .describe("Special ad category compliance"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, name, objective, status, daily_budget, lifetime_budget, stop_time, special_ad_categories, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = {
+          name,
+          objective,
+          status,
+          special_ad_categories,
+        };
+        if (daily_budget) fields.daily_budget = daily_budget;
+        if (lifetime_budget) fields.lifetime_budget = lifetime_budget;
+        if (stop_time) fields.stop_time = stop_time;
+
+        const result = await client.post<{ id: string }>(
+          `/${ad_account_id}/campaigns`,
+          fields
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Campaign created successfully.\n\n- **Campaign ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Objective**: ${objective}\n- **Status**: ${status}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Update Campaign ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_update_campaign",
+    {
+      title: "Update Campaign",
+      description: `Updates an existing campaign. Only provided fields are changed.
+
+Args:
+  - campaign_id (string): Campaign ID to update
+  - name (string, optional): New campaign name
+  - status (string, optional): ACTIVE, PAUSED, or ARCHIVED
+  - daily_budget (number, optional): New daily budget in cents
+  - lifetime_budget (number, optional): New lifetime budget in cents`,
+      inputSchema: z
+        .object({
+          campaign_id: z.string().describe("Campaign ID"),
+          name: z.string().optional(),
+          status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+          daily_budget: z.number().int().positive().optional(),
+          lifetime_budget: z.number().int().positive().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ campaign_id, name, status, daily_budget, lifetime_budget, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = {};
+        if (name) fields.name = name;
+        if (status) fields.status = status;
+        if (daily_budget) fields.daily_budget = daily_budget;
+        if (lifetime_budget) fields.lifetime_budget = lifetime_budget;
+
+        const result = await client.post<{ success: boolean }>(`/${campaign_id}`, fields);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Campaign \`${campaign_id}\` updated successfully.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delete Campaign ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_delete_campaign",
+    {
+      title: "Delete Campaign",
+      description: `Deletes (archives) a campaign. This cannot be undone.
+
+Args:
+  - campaign_id (string): Campaign ID to delete`,
+      inputSchema: z
+        .object({
+          campaign_id: z.string().describe("Campaign ID"),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ campaign_id }) => {
+      try {
+        const result = await client.delete<{ success: boolean }>(`/${campaign_id}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: result.success
+                ? `Campaign \`${campaign_id}\` deleted successfully.`
+                : `Failed to delete campaign \`${campaign_id}\`.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Sets ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_adsets",
+    {
+      title: "List Ad Sets",
+      description: `Lists ad sets for a campaign or ad account.
+
+Args:
+  - campaign_id (string, optional): Filter by campaign ID
+  - ad_account_id (string, optional): Ad account ID (use if not filtering by campaign)
+  - status_filter (string[], optional): ACTIVE, PAUSED, ARCHIVED, DELETED
+  - limit (number): Max results (default 20)
+  - after (string, optional): Pagination cursor
+
+Provide either campaign_id or ad_account_id.`,
+      inputSchema: z
+        .object({
+          campaign_id: z.string().optional().describe("Filter by campaign ID"),
+          ad_account_id: z.string().optional().describe("Ad account ID (if no campaign filter)"),
+          status_filter: z
+            .array(z.enum(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]))
+            .optional(),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ campaign_id, ad_account_id, status_filter, limit, after, response_format }) => {
+      try {
+        const parentId = campaign_id ?? ad_account_id;
+        if (!parentId) {
+          return {
+            content: [{ type: "text", text: "Error: Provide either campaign_id or ad_account_id." }], isError: true,
+          };
+        }
+
+        const params: Record<string, unknown> = { fields: ADSET_FIELDS, limit };
+        if (status_filter?.length) params.effective_status = JSON.stringify(status_filter);
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<AdSet>>(
+          `/${parentId}/adsets`,
+          params
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad sets found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Ad Sets (${data.data.length} shown)`, ""];
+        for (const s of data.data) {
+          lines.push(`## ${s.name} (\`${s.id}\`)`);
+          lines.push(`- **Campaign**: \`${s.campaign_id}\``);
+          lines.push(`- **Status**: ${s.effective_status ?? s.status}`);
+          lines.push(`- **Budget**: ${formatBudget(s.daily_budget, s.lifetime_budget)}`);
+          lines.push(`- **Optimization Goal**: ${s.optimization_goal ?? "N/A"}`);
+          lines.push(`- **Billing Event**: ${s.billing_event ?? "N/A"}`);
+          if (s.start_time) lines.push(`- **Start**: ${formatDate(s.start_time)}`);
+          if (s.end_time) lines.push(`- **End**: ${formatDate(s.end_time)}`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "ad sets") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Ad Set ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_adset",
+    {
+      title: "Create Ad Set",
+      description: `Creates a new ad set within a campaign.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - campaign_id (string): Parent campaign ID
+  - name (string): Ad set name
+  - daily_budget (number, optional): Daily budget in cents
+  - lifetime_budget (number, optional): Lifetime budget in cents (requires end_time)
+  - billing_event (string): How you're charged: IMPRESSIONS, LINK_CLICKS, etc.
+  - optimization_goal (string): What to optimize for: REACH, LINK_CLICKS, CONVERSIONS, etc.
+  - targeting (object): Targeting spec JSON. Example: {"geo_locations": {"countries": ["US"]}, "age_min": 18, "age_max": 65}
+  - start_time (string, optional): ISO 8601 start time
+  - end_time (string, optional): ISO 8601 end time (required with lifetime_budget)
+  - status (string): ACTIVE or PAUSED (default PAUSED)
+
+Returns the new ad set ID.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string().describe("Ad account ID"),
+          campaign_id: z.string().describe("Parent campaign ID"),
+          name: z.string().min(1),
+          daily_budget: z.number().int().positive().optional(),
+          lifetime_budget: z.number().int().positive().optional(),
+          billing_event: z
+            .enum(["IMPRESSIONS", "LINK_CLICKS", "POST_ENGAGEMENT", "PAGE_LIKES", "APP_INSTALLS", "VIDEO_VIEWS"])
+            .describe("Billing event type"),
+          optimization_goal: z
+            .enum([
+              "REACH",
+              "LINK_CLICKS",
+              "CONVERSIONS",
+              "LANDING_PAGE_VIEWS",
+              "APP_INSTALLS",
+              "VIDEO_VIEWS",
+              "LEAD_GENERATION",
+              "ENGAGED_USERS",
+              "PAGE_LIKES",
+            ])
+            .describe("Optimization goal"),
+          targeting: z
+            .record(z.unknown())
+            .describe("Targeting spec object (geo_locations, age, interests, etc.)"),
+          start_time: z.string().optional(),
+          end_time: z.string().optional(),
+          status: z.enum(["ACTIVE", "PAUSED"]).default("PAUSED"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, campaign_id, name, daily_budget, lifetime_budget, billing_event, optimization_goal, targeting, start_time, end_time, status, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = {
+          campaign_id,
+          name,
+          billing_event,
+          optimization_goal,
+          targeting,
+          status,
+        };
+        if (daily_budget) fields.daily_budget = daily_budget;
+        if (lifetime_budget) fields.lifetime_budget = lifetime_budget;
+        if (start_time) fields.start_time = start_time;
+        if (end_time) fields.end_time = end_time;
+
+        const result = await client.post<{ id: string }>(
+          `/${ad_account_id}/adsets`,
+          fields
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Ad set created successfully.\n\n- **Ad Set ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Status**: ${status}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Update Ad Set ────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_update_adset",
+    {
+      title: "Update Ad Set",
+      description: `Updates an existing ad set. Only provided fields are changed.
+
+Args:
+  - adset_id (string): Ad set ID to update
+  - name (string, optional): New name
+  - status (string, optional): ACTIVE, PAUSED, or ARCHIVED
+  - daily_budget (number, optional): New daily budget in cents
+  - end_time (string, optional): New end time ISO 8601`,
+      inputSchema: z
+        .object({
+          adset_id: z.string(),
+          name: z.string().optional(),
+          status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+          daily_budget: z.number().int().positive().optional(),
+          end_time: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ adset_id, name, status, daily_budget, end_time, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = {};
+        if (name) fields.name = name;
+        if (status) fields.status = status;
+        if (daily_budget) fields.daily_budget = daily_budget;
+        if (end_time) fields.end_time = end_time;
+
+        await client.post(`/${adset_id}`, fields);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify({ success: true, id: adset_id }, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Ad set \`${adset_id}\` updated successfully.` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ads ─────────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ads",
+    {
+      title: "List Ads",
+      description: `Lists ads for an ad set, campaign, or ad account.
+
+Args:
+  - adset_id (string, optional): Filter by ad set
+  - campaign_id (string, optional): Filter by campaign
+  - ad_account_id (string, optional): List all ads in account
+  - status_filter (string[], optional): ACTIVE, PAUSED, ARCHIVED, DELETED
+  - limit (number): Max results (default 20)
+  - after (string, optional): Pagination cursor
+
+Provide one of adset_id, campaign_id, or ad_account_id.`,
+      inputSchema: z
+        .object({
+          adset_id: z.string().optional(),
+          campaign_id: z.string().optional(),
+          ad_account_id: z.string().optional(),
+          status_filter: z
+            .array(z.enum(["ACTIVE", "PAUSED", "ARCHIVED", "DELETED"]))
+            .optional(),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ adset_id, campaign_id, ad_account_id, status_filter, limit, after, response_format }) => {
+      try {
+        const parentId = adset_id ?? campaign_id ?? ad_account_id;
+        if (!parentId) {
+          return {
+            content: [{ type: "text", text: "Error: Provide adset_id, campaign_id, or ad_account_id." }], isError: true,
+          };
+        }
+
+        const params: Record<string, unknown> = { fields: AD_FIELDS, limit };
+        if (status_filter?.length) params.effective_status = JSON.stringify(status_filter);
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<Ad>>(`/${parentId}/ads`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ads found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Ads (${data.data.length} shown)`, ""];
+        for (const ad of data.data) {
+          lines.push(`## ${ad.name} (\`${ad.id}\`)`);
+          lines.push(`- **Ad Set**: \`${ad.adset_id}\``);
+          lines.push(`- **Campaign**: \`${ad.campaign_id}\``);
+          lines.push(`- **Status**: ${ad.effective_status ?? ad.status}`);
+          if (ad.creative) lines.push(`- **Creative ID**: \`${ad.creative.id}\``);
+          if (ad.preview_shareable_link) lines.push(`- **Preview**: ${ad.preview_shareable_link}`);
+          lines.push(`- **Created**: ${formatDate(ad.created_time)}`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "ads") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Ad ─────────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_ad",
+    {
+      title: "Create Ad",
+      description: `Creates a new ad within an ad set.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - adset_id (string): Parent ad set ID
+  - name (string): Ad name
+  - creative_id (string): Ad creative ID (from meta_list_ad_creatives or meta_create_ad_creative)
+  - status (string): ACTIVE or PAUSED (default PAUSED)
+
+Returns the new ad ID.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          adset_id: z.string(),
+          name: z.string().min(1),
+          creative_id: z.string().describe("Ad creative ID"),
+          status: z.enum(["ACTIVE", "PAUSED"]).default("PAUSED"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, adset_id, name, creative_id, status, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/ads`, {
+          adset_id,
+          name,
+          creative: { creative_id },
+          status,
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Ad created successfully.\n\n- **Ad ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Status**: ${status}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Update Ad ────────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_update_ad",
+    {
+      title: "Update Ad",
+      description: `Updates an existing ad's status or name.
+
+Args:
+  - ad_id (string): Ad ID
+  - name (string, optional): New name
+  - status (string, optional): ACTIVE, PAUSED, or ARCHIVED`,
+      inputSchema: z
+        .object({
+          ad_id: z.string(),
+          name: z.string().optional(),
+          status: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_id, name, status, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = {};
+        if (name) fields.name = name;
+        if (status) fields.status = status;
+
+        await client.post(`/${ad_id}`, fields);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify({ success: true, id: ad_id }, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Ad \`${ad_id}\` updated successfully.` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Creatives ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_creatives",
+    {
+      title: "List Ad Creatives",
+      description: `Lists ad creatives for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - limit (number): Max results (default 20)
+  - after (string, optional): Pagination cursor
+
+Returns creative IDs, names, and associated page post IDs.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = { fields: CREATIVE_FIELDS, limit };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<AdCreative>>(
+          `/${ad_account_id}/adcreatives`,
+          params
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No creatives found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Ad Creatives (${data.data.length} shown)`, ""];
+        for (const cr of data.data) {
+          lines.push(`## ${cr.name ?? "Unnamed"} (\`${cr.id}\`)`);
+          if (cr.title) lines.push(`- **Title**: ${cr.title}`);
+          if (cr.body) lines.push(`- **Body**: ${truncateField(cr.body, 150)}`);
+          if (cr.object_type) lines.push(`- **Type**: ${cr.object_type}`);
+          if (cr.object_story_id) lines.push(`- **Post ID**: \`${cr.object_story_id}\``);
+          if (cr.image_url) lines.push(`- **Image**: ${cr.image_url}`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "creatives") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Ad Creative ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_ad_creative",
+    {
+      title: "Create Ad Creative",
+      description: `Creates an ad creative from an existing Facebook Page post.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Creative name
+  - page_id (string): Facebook Page ID that owns the post
+  - object_story_id (string, optional): Use an existing published post as creative (format: {page_id}_{post_id})
+  - title (string, optional): Ad headline
+  - body (string, optional): Ad body text
+  - image_url (string, optional): Image URL for the creative
+  - link_url (string, optional): Destination URL
+
+Returns the new creative ID.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          page_id: z.string().describe("Facebook Page ID"),
+          object_story_id: z.string().optional().describe("Existing post ID as {page_id}_{post_id}"),
+          title: z.string().optional(),
+          body: z.string().optional(),
+          image_url: z.string().url().optional(),
+          link_url: z.string().url().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, name, page_id, object_story_id, title, body, image_url, link_url, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = { name };
+
+        if (object_story_id) {
+          fields.object_story_id = object_story_id;
+        } else {
+          // Build object_story_spec for new creative
+          const linkData: Record<string, unknown> = {};
+          if (title) linkData.name = title;
+          if (body) linkData.description = body;
+          if (image_url) linkData.picture = image_url;
+          if (link_url) linkData.link = link_url;
+
+          fields.object_story_spec = {
+            page_id,
+            link_data: linkData,
+          };
+        }
+
+        const result = await client.post<{ id: string }>(
+          `/${ad_account_id}/adcreatives`,
+          fields
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Ad creative created successfully.\n\n- **Creative ID**: \`${result.id}\`\n- **Name**: ${name}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Ad Preview ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_preview",
+    {
+      title: "Get Ad Preview",
+      description: `Generates a preview URL for an ad or creative.
+
+Args:
+  - ad_id (string, optional): Existing ad ID
+  - creative_id (string, optional): Creative ID to preview
+  - ad_format (string): Preview format — DESKTOP_FEED_STANDARD, MOBILE_FEED_STANDARD, INSTAGRAM_STANDARD, INSTAGRAM_STORY, RIGHT_COLUMN_STANDARD
+
+Provide either ad_id or creative_id.`,
+      inputSchema: z
+        .object({
+          ad_id: z.string().optional(),
+          creative_id: z.string().optional(),
+          ad_format: z
+            .enum([
+              "DESKTOP_FEED_STANDARD",
+              "MOBILE_FEED_STANDARD",
+              "INSTAGRAM_STANDARD",
+              "INSTAGRAM_STORY",
+              "RIGHT_COLUMN_STANDARD",
+              "MARKETPLACE_MOBILE",
+              "AUDIENCE_NETWORK_OUTSTREAM_VIDEO",
+            ])
+            .default("MOBILE_FEED_STANDARD"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_id, creative_id, ad_format, response_format }) => {
+      try {
+        const targetId = ad_id ?? creative_id;
+        if (!targetId) {
+          return { content: [{ type: "text", text: "Error: Provide ad_id or creative_id." }], isError: true };
+        }
+
+        const data = await client.get<{ data: Array<{ body: string }> }>(
+          `/${targetId}/previews`,
+          { ad_format }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const preview = data.data?.[0]?.body ?? "No preview available.";
+        return { content: [{ type: "text", text: `# Ad Preview (${ad_format})\n\n${preview}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delete Ad ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_delete_ad",
+    {
+      title: "Delete Ad",
+      description: `Deletes an ad permanently.
+
+Args:
+  - ad_id (string): Ad ID to delete`,
+      inputSchema: z
+        .object({
+          ad_id: z.string(),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_id }) => {
+      try {
+        const result = await client.delete<{ success: boolean }>(`/${ad_id}`);
+        return {
+          content: [{
+            type: "text",
+            text: result.success ? `Ad \`${ad_id}\` deleted.` : `Failed to delete ad \`${ad_id}\`.`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delete Ad Set ─────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_delete_adset",
+    {
+      title: "Delete Ad Set",
+      description: `Deletes an ad set permanently.
+
+Args:
+  - adset_id (string): Ad set ID to delete`,
+      inputSchema: z
+        .object({
+          adset_id: z.string(),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ adset_id }) => {
+      try {
+        const result = await client.delete<{ success: boolean }>(`/${adset_id}`);
+        return {
+          content: [{
+            type: "text",
+            text: result.success ? `Ad set \`${adset_id}\` deleted.` : `Failed to delete ad set \`${adset_id}\`.`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Ad Account Users ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_account_users",
+    {
+      title: "Get Ad Account Users",
+      description: `Lists users who have access to an ad account with their roles.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string;
+          name: string;
+          role: number;
+          permissions: string[];
+        }>>(`/${ad_account_id}/users`, {
+          fields: "id,name,role,permissions",
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No users found for this ad account." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const roleMap: Record<number, string> = { 1001: "Admin", 1002: "Advertiser", 1003: "Analyst" };
+        const lines = [`# Ad Account Users (${data.data.length})`, ""];
+        for (const user of data.data) {
+          lines.push(`- **${user.name}** (\`${user.id}\`) — ${roleMap[user.role] ?? `Role ${user.role}`}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Upload Ad Image ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_upload_ad_image",
+    {
+      title: "Upload Ad Image",
+      description: `Uploads an image to an ad account's image library for use in creatives.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - url (string): Public URL of the image to upload
+  - name (string, optional): Name for the uploaded image
+
+Returns: Image hash (used when creating ad creatives).`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          url: z.string().url().describe("Public image URL"),
+          name: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, url, name, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = { url };
+        if (name) fields.name = name;
+
+        const result = await client.post<{ images: Record<string, { hash: string; url: string }> }>(
+          `/${ad_account_id}/adimages`,
+          fields
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        const images = Object.values(result.images ?? {});
+        const img = images[0];
+        return {
+          content: [{
+            type: "text",
+            text: img
+              ? `Image uploaded.\n\n- **Hash**: \`${img.hash}\`\n- **URL**: ${img.url}`
+              : "Image upload response received but no hash returned.",
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Targeting Search: Interests ───────────────────────────────────────
+  server.registerTool(
+    "meta_search_targeting_interests",
+    {
+      title: "Search Targeting Interests",
+      description: `Searches for interest-based targeting options for ad sets.
+
+Args:
+  - q (string): Search query (e.g., "yoga", "cooking")
+  - limit (number): Max results (default 50)
+
+Returns: Interest IDs and names to use in ad set targeting.`,
+      inputSchema: z
+        .object({
+          q: z.string().min(1).describe("Interest search query"),
+          limit: z.number().int().min(1).max(100).default(50),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ q, limit, response_format }) => {
+      try {
+        const data = await client.get<{ data: Array<{ id: string; name: string; audience_size_lower_bound?: number; audience_size_upper_bound?: number; path?: string[]; topic?: string }> }>(
+          "/search",
+          { type: "adinterest", q, limit }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: `No interests found for "${q}".` }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# Targeting Interests: "${q}" (${data.data.length})`, ""];
+        for (const i of data.data) {
+          const size = i.audience_size_lower_bound ? `~${formatNumber(i.audience_size_lower_bound)}–${formatNumber(i.audience_size_upper_bound)}` : "N/A";
+          lines.push(`- **${i.name}** (\`${i.id}\`) — Audience: ${size}${i.path?.length ? ` | Path: ${i.path.join(" > ")}` : ""}`);
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "interests") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Targeting Search: Geolocations ────────────────────────────────────
+  server.registerTool(
+    "meta_search_targeting_geolocations",
+    {
+      title: "Search Targeting Geolocations",
+      description: `Searches for geographic targeting options (countries, regions, cities, zip codes).
+
+Args:
+  - q (string): Location search query (e.g., "New York", "United Kingdom")
+  - type (string): Location type — country, region, city, zip, geo_market, electoral_district
+  - limit (number): Max results (default 25)
+
+Returns: Location keys to use in ad set targeting.`,
+      inputSchema: z
+        .object({
+          q: z.string().min(1),
+          type: z.enum(["country", "region", "city", "zip", "geo_market", "electoral_district"]).default("city"),
+          limit: z.number().int().min(1).max(100).default(25),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ q, type, limit, response_format }) => {
+      try {
+        const data = await client.get<{ data: Array<{ key: string; name: string; type: string; country_code?: string; region?: string; supports_city?: boolean; supports_region?: boolean }> }>(
+          "/search",
+          { type: "adgeolocation", q, location_types: `["${type}"]`, limit }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: `No geolocations found for "${q}".` }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# Geolocations: "${q}" (${data.data.length})`, ""];
+        for (const loc of data.data) {
+          lines.push(`- **${loc.name}** (key: \`${loc.key}\`, type: ${loc.type})${loc.country_code ? ` — ${loc.country_code}` : ""}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Targeting Search: Demographics ────────────────────────────────────
+  server.registerTool(
+    "meta_search_targeting_demographics",
+    {
+      title: "Search Targeting Demographics",
+      description: `Searches for demographic targeting options (job titles, employers, education).
+
+Args:
+  - q (string): Search query
+  - type (string): adworkposition (job titles), adworkemployer (employers), adeducationschool (schools), adeducationmajor (majors)`,
+      inputSchema: z
+        .object({
+          q: z.string().min(1),
+          type: z.enum(["adworkposition", "adworkemployer", "adeducationschool", "adeducationmajor"]),
+          limit: z.number().int().min(1).max(100).default(25),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ q, type, limit, response_format }) => {
+      try {
+        const data = await client.get<{ data: Array<{ id: string; name: string }> }>(
+          "/search",
+          { type, q, limit }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: `No results found for "${q}" (${type}).` }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# ${type}: "${q}" (${data.data.length})`, ""];
+        for (const item of data.data) {
+          lines.push(`- **${item.name}** (\`${item.id}\`)`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Reach Estimate ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_reach_estimate",
+    {
+      title: "Get Reach Estimate",
+      description: `Estimates the potential reach for a targeting specification.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - targeting_spec (object): Targeting specification (same format as ad set targeting)
+  - optimization_goal (string, optional): e.g., REACH, LINK_CLICKS, IMPRESSIONS
+
+Returns: Estimated daily reach and audience size.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          targeting_spec: z.record(z.unknown()).describe("Targeting spec object"),
+          optimization_goal: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, targeting_spec, optimization_goal, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          targeting_spec: JSON.stringify(targeting_spec),
+        };
+        if (optimization_goal) params.optimization_goal = optimization_goal;
+
+        const data = await client.get<{ data: { users_lower_bound: number; users_upper_bound: number; estimate_dau?: number; estimate_mau?: number; estimate_ready?: boolean } }>(
+          `/${ad_account_id}/reachestimate`,
+          params
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const d = data.data;
+        const lines = [
+          `# Reach Estimate`,
+          "",
+          `- **Audience Size**: ${formatNumber(d.users_lower_bound)}–${formatNumber(d.users_upper_bound)}`,
+          d.estimate_dau ? `- **Daily Active Users**: ~${formatNumber(d.estimate_dau)}` : "",
+          d.estimate_mau ? `- **Monthly Active Users**: ~${formatNumber(d.estimate_mau)}` : "",
+        ].filter(Boolean);
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delivery Estimate ─────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_delivery_estimate",
+    {
+      title: "Get Delivery Estimate",
+      description: `Gets delivery estimate for an existing ad set.
+
+Args:
+  - adset_id (string): Ad set ID
+
+Returns: Estimated daily outcomes (reach, impressions, actions) and bid suggestion.`,
+      inputSchema: z
+        .object({
+          adset_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ adset_id, response_format }) => {
+      try {
+        const data = await client.get<{ data: unknown[] }>(
+          `/${adset_id}/delivery_estimate`,
+          { fields: "daily_outcomes_curve,estimate_dau,estimate_mau,bid_estimate" }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `# Delivery Estimate for \`${adset_id}\`\n\n${JSON.stringify(data.data, null, 2)}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Account Pixels ────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_pixels",
+    {
+      title: "List Ad Account Pixels",
+      description: `Lists all Meta Pixels for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; name: string; last_fired_time?: string; is_unavailable?: boolean; creation_time?: string;
+        }>>(`/${ad_account_id}/adspixels`, {
+          fields: "id,name,last_fired_time,is_unavailable,creation_time",
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No pixels found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Meta Pixels (${data.data.length})`, ""];
+        for (const px of data.data) {
+          lines.push(`## ${px.name} (\`${px.id}\`)`);
+          if (px.last_fired_time) lines.push(`- **Last fired**: ${formatDate(px.last_fired_time)}`);
+          if (px.creation_time) lines.push(`- **Created**: ${formatDate(px.creation_time)}`);
+          lines.push(`- **Status**: ${px.is_unavailable ? "Unavailable" : "Active"}`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Pixel ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_pixel",
+    {
+      title: "Create Meta Pixel",
+      description: `Creates a new Meta Pixel for conversion tracking.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Pixel name`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, name, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/adspixels`, { name });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Pixel created.\n\n- **Pixel ID**: \`${result.id}\`\n- **Name**: ${name}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Custom Conversions ───────────────────────────────────────────
+  server.registerTool(
+    "meta_list_custom_conversions",
+    {
+      title: "List Custom Conversions",
+      description: `Lists custom conversions for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; name: string; pixel?: { id: string }; custom_event_type?: string; rule?: string; creation_time?: string;
+        }>>(`/${ad_account_id}/customconversions`, {
+          fields: "id,name,pixel,custom_event_type,rule,creation_time",
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No custom conversions found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Custom Conversions (${data.data.length})`, ""];
+        for (const cc of data.data) {
+          lines.push(`## ${cc.name} (\`${cc.id}\`)`);
+          if (cc.custom_event_type) lines.push(`- **Event type**: ${cc.custom_event_type}`);
+          if (cc.pixel?.id) lines.push(`- **Pixel**: \`${cc.pixel.id}\``);
+          if (cc.creation_time) lines.push(`- **Created**: ${formatDate(cc.creation_time)}`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Custom Conversion ──────────────────────────────────────────
+  server.registerTool(
+    "meta_create_custom_conversion",
+    {
+      title: "Create Custom Conversion",
+      description: `Creates a custom conversion for tracking specific actions.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Conversion name
+  - pixel_id (string): Pixel ID to associate with
+  - custom_event_type (string): Event type — CONTENT_VIEW, SEARCH, ADD_TO_CART, ADD_TO_WISHLIST, INITIATED_CHECKOUT, ADD_PAYMENT_INFO, PURCHASE, LEAD, COMPLETE_REGISTRATION, OTHER
+  - rule (string): URL rule as JSON (e.g., {"url":{"i_contains":"thank-you"}})`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          pixel_id: z.string(),
+          custom_event_type: z.enum(["CONTENT_VIEW", "SEARCH", "ADD_TO_CART", "ADD_TO_WISHLIST", "INITIATED_CHECKOUT", "ADD_PAYMENT_INFO", "PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "OTHER"]),
+          rule: z.string().describe("URL rule as JSON string"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, name, pixel_id, custom_event_type, rule, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/customconversions`, {
+          name, pixel_id, custom_event_type, rule,
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Custom conversion created.\n\n- **ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Event**: ${custom_event_type}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Saved Audiences ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_saved_audiences",
+    {
+      title: "List Saved Audiences",
+      description: `Lists saved audiences (targeting presets) for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,name,targeting,approximate_count",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; name: string; approximate_count?: number; targeting?: Record<string, unknown>;
+        }>>(`/${ad_account_id}/saved_audiences`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No saved audiences found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Saved Audiences (${data.data.length})`, ""];
+        for (const aud of data.data) {
+          lines.push(`- **${aud.name}** (\`${aud.id}\`)${aud.approximate_count ? ` — ~${formatNumber(aud.approximate_count)} people` : ""}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Rules ─────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_rules",
+    {
+      title: "List Automated Ad Rules",
+      description: `Lists automated rules for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; name: string; status: string; evaluation_spec?: Record<string, unknown>; execution_spec?: Record<string, unknown>;
+        }>>(`/${ad_account_id}/adrules_library`, {
+          fields: "id,name,status,evaluation_spec,execution_spec",
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad rules found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Automated Ad Rules (${data.data.length})`, ""];
+        for (const rule of data.data) {
+          lines.push(`- **${rule.name}** (\`${rule.id}\`) — Status: ${rule.status}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Labels ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_labels",
+    {
+      title: "List Ad Labels",
+      description: `Lists ad labels for an ad account. Labels help organize campaigns, ad sets, and ads.
+
+Args:
+  - ad_account_id (string): Ad account ID`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; name: string; created_time?: string;
+        }>>(`/${ad_account_id}/adlabels`, {
+          fields: "id,name,created_time",
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad labels found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Ad Labels (${data.data.length})`, ""];
+        for (const label of data.data) {
+          lines.push(`- **${label.name}** (\`${label.id}\`)${label.created_time ? ` — Created: ${formatDate(label.created_time)}` : ""}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Ad Label ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_ad_label",
+    {
+      title: "Create Ad Label",
+      description: `Creates a label for organizing ads, ad sets, or campaigns.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Label name`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, name, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/adlabels`, { name });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Label created.\n\n- **ID**: \`${result.id}\`\n- **Name**: ${name}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Videos ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_videos",
+    {
+      title: "List Ad Videos",
+      description: `Lists videos in an ad account's video library.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - limit (number): Max results (default 20)`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,title,length,created_time,updated_time,thumbnails,permalink_url",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; title?: string; length?: number; created_time?: string; permalink_url?: string;
+        }>>(`/${ad_account_id}/advideos`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad videos found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Ad Videos (${data.data.length})`, ""];
+        for (const v of data.data) {
+          lines.push(`- **${v.title ?? "Untitled"}** (\`${v.id}\`)${v.length ? ` — ${Math.round(v.length)}s` : ""}${v.created_time ? ` | ${formatDate(v.created_time)}` : ""}`);
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Upload Ad Video ───────────────────────────────────────────────────
+  server.registerTool(
+    "meta_upload_ad_video",
+    {
+      title: "Upload Ad Video",
+      description: `Uploads a video to an ad account's video library for use in creatives.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - file_url (string): Public URL of video file
+  - title (string, optional): Video title
+  - description (string, optional): Video description`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          file_url: z.string().url(),
+          title: z.string().optional(),
+          description: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, file_url, title, description, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = { file_url };
+        if (title) fields.title = title;
+        if (description) fields.description = description;
+
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/advideos`, fields);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Video uploaded.\n\n- **Video ID**: \`${result.id}\`` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Ad Account Activity Log ───────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_account_activity",
+    {
+      title: "Get Ad Account Activity Log",
+      description: `Gets the activity/change log for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - limit (number): Max results (default 25)
+  - since (string, optional): Start date YYYY-MM-DD
+  - until (string, optional): End date YYYY-MM-DD`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          since: z.string().optional(),
+          until: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, limit, since, until, response_format }) => {
+      try {
+        const params: Record<string, unknown> = { limit };
+        if (since) params.since = since;
+        if (until) params.until = until;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          event_type: string;
+          event_time: string;
+          actor_id?: string;
+          actor_name?: string;
+          object_id?: string;
+          object_name?: string;
+          extra_data?: string;
+        }>>(`/${ad_account_id}/activities`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No activity found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Ad Account Activity (${data.data.length})`, ""];
+        for (const act of data.data) {
+          lines.push(`- **${act.event_type}** by ${act.actor_name ?? act.actor_id ?? "unknown"} (${formatDate(act.event_time)})${act.object_name ? ` — ${act.object_name}` : ""}`);
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "activities") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Ad Account Details ────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_account",
+    {
+      title: "Get Ad Account Details",
+      description: `Gets detailed information about a specific ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<AdAccount>(`/${ad_account_id}`, {
+          fields: AD_ACCOUNT_FIELDS,
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const statusMap: Record<number, string> = { 1: "Active", 2: "Disabled", 3: "Unsettled", 7: "Pending Review", 8: "Pending Closure", 9: "In Grace Period", 100: "Closed", 101: "Any Active", 201: "Any Closed" };
+        const lines = [
+          `# ${data.name ?? "Ad Account"}`,
+          "",
+          `- **ID**: \`${data.id}\``,
+          `- **Account ID**: ${data.account_id}`,
+          `- **Status**: ${statusMap[data.account_status ?? 0] ?? `Unknown (${data.account_status})`}`,
+          `- **Currency**: ${data.currency}`,
+          `- **Timezone**: ${data.timezone_name}`,
+          data.amount_spent ? `- **Total Spent**: ${formatBudget(data.amount_spent, undefined, data.currency)}` : "",
+          data.balance ? `- **Balance**: ${formatBudget(data.balance, undefined, data.currency)}` : "",
+          data.spend_cap ? `- **Spend Cap**: ${formatBudget(data.spend_cap, undefined, data.currency)}` : "",
+          data.business ? `- **Business**: ${data.business.name} (\`${data.business.id}\`)` : "",
+        ].filter(Boolean);
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Single Ad Set ─────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_adset",
+    {
+      title: "Get Ad Set Details",
+      description: `Gets detailed information about a specific ad set.
+
+Args:
+  - adset_id (string): Ad set ID`,
+      inputSchema: z
+        .object({
+          adset_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ adset_id, response_format }) => {
+      try {
+        const data = await client.get<AdSet>(`/${adset_id}`, { fields: ADSET_FIELDS });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# Ad Set: ${data.name}`,
+          "",
+          `- **ID**: \`${data.id}\``,
+          `- **Campaign**: \`${data.campaign_id}\``,
+          `- **Status**: ${data.effective_status ?? data.status}`,
+          `- **Budget**: ${formatBudget(data.daily_budget, data.lifetime_budget)}`,
+          data.billing_event ? `- **Billing**: ${data.billing_event}` : "",
+          data.optimization_goal ? `- **Optimization**: ${data.optimization_goal}` : "",
+          data.start_time ? `- **Start**: ${formatDate(data.start_time)}` : "",
+          data.end_time ? `- **End**: ${formatDate(data.end_time)}` : "",
+          data.targeting ? `- **Targeting**: ${truncateField(JSON.stringify(data.targeting), 200)}` : "",
+        ].filter(Boolean);
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Single Ad ─────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad",
+    {
+      title: "Get Ad Details",
+      description: `Gets detailed information about a specific ad.
+
+Args:
+  - ad_id (string): Ad ID`,
+      inputSchema: z
+        .object({
+          ad_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_id, response_format }) => {
+      try {
+        const data = await client.get<Ad>(`/${ad_id}`, { fields: AD_FIELDS });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# Ad: ${data.name}`,
+          "",
+          `- **ID**: \`${data.id}\``,
+          `- **Ad Set**: \`${data.adset_id}\``,
+          `- **Campaign**: \`${data.campaign_id}\``,
+          `- **Status**: ${data.effective_status ?? data.status}`,
+          data.creative?.id ? `- **Creative**: \`${data.creative.id}\`` : "",
+          data.preview_shareable_link ? `- **Preview**: ${data.preview_shareable_link}` : "",
+          data.created_time ? `- **Created**: ${formatDate(data.created_time)}` : "",
+        ].filter(Boolean);
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Single Creative ───────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_creative",
+    {
+      title: "Get Ad Creative Details",
+      description: `Gets detailed information about a specific ad creative.
+
+Args:
+  - creative_id (string): Creative ID`,
+      inputSchema: z
+        .object({
+          creative_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ creative_id, response_format }) => {
+      try {
+        const data = await client.get<AdCreative>(`/${creative_id}`, { fields: CREATIVE_FIELDS });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# Creative: ${data.name ?? "Unnamed"}`,
+          "",
+          `- **ID**: \`${data.id}\``,
+          data.title ? `- **Title**: ${data.title}` : "",
+          data.body ? `- **Body**: ${data.body}` : "",
+          data.image_url ? `- **Image**: ${data.image_url}` : "",
+          data.object_story_id ? `- **Story ID**: \`${data.object_story_id}\`` : "",
+          data.object_type ? `- **Type**: ${data.object_type}` : "",
+          data.status ? `- **Status**: ${data.status}` : "",
+        ].filter(Boolean);
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Ad Rule ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_ad_rule",
+    {
+      title: "Create Automated Ad Rule",
+      description: `Creates an automated rule for managing ads, ad sets, or campaigns.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Rule name
+  - evaluation_spec (object): Conditions that trigger the rule (e.g., {"evaluation_type":"TRIGGER","trigger":{"type":"STATS_CHANGE","field":"cost_per_result","value":"5.00","operator":"GREATER_THAN"}})
+  - execution_spec (object): Actions to take (e.g., {"execution_type":"PAUSE"})
+  - schedule_spec (object, optional): When to evaluate (e.g., {"schedule_type":"DAILY"})`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          evaluation_spec: z.record(z.unknown()),
+          execution_spec: z.record(z.unknown()),
+          schedule_spec: z.record(z.unknown()).optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, name, evaluation_spec, execution_spec, schedule_spec, response_format }) => {
+      try {
+        const fields: Record<string, unknown> = { name, evaluation_spec, execution_spec };
+        if (schedule_spec) fields.schedule_spec = schedule_spec;
+
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/adrules_library`, fields);
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Ad rule created.\n\n- **Rule ID**: \`${result.id}\`\n- **Name**: ${name}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delete Ad Rule ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_delete_ad_rule",
+    {
+      title: "Delete Automated Ad Rule",
+      description: `Deletes an automated ad rule.
+
+Args:
+  - rule_id (string): Ad rule ID`,
+      inputSchema: z
+        .object({ rule_id: z.string() })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ rule_id }) => {
+      try {
+        const result = await client.delete<{ success: boolean }>(`/${rule_id}`);
+        return {
+          content: [{ type: "text", text: result.success ? `Rule \`${rule_id}\` deleted.` : `Failed to delete rule.` }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Ad Images ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_ad_images",
+    {
+      title: "List Ad Images",
+      description: `Lists images in an ad account's image library.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - limit (number): Max results (default 25)`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,hash,name,url,width,height,created_time",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string; hash: string; name?: string; url?: string; width?: number; height?: number; created_time?: string;
+        }>>(`/${ad_account_id}/adimages`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No ad images found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Ad Images (${data.data.length})`, ""];
+        for (const img of data.data) {
+          lines.push(`- **${img.name ?? "Unnamed"}** (hash: \`${img.hash}\`)${img.width ? ` — ${img.width}x${img.height}` : ""}${img.created_time ? ` | ${formatDate(img.created_time)}` : ""}`);
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "images") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Browse Targeting Categories ───────────────────────────────────────
+  server.registerTool(
+    "meta_browse_targeting_categories",
+    {
+      title: "Browse Targeting Categories",
+      description: `Browses all available targeting category types for ad targeting.
+
+Args:
+  - type (string): Category type — adTargetingCategory, adcountry, adlocale, adlanguage`,
+      inputSchema: z
+        .object({
+          type: z.enum(["adTargetingCategory", "adcountry", "adlocale"]).default("adTargetingCategory"),
+          class: z.enum(["interests", "behaviors", "demographics", "life_events", "industries", "income", "family_statuses", "user_device", "user_os"]).optional().describe("Sub-class filter (for adTargetingCategory)"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ type, class: subclass, response_format }) => {
+      try {
+        const params: Record<string, unknown> = { type };
+        if (subclass) params.class = subclass;
+
+        const data = await client.get<{ data: Array<{ id: string; name: string; type?: string; path?: string[]; audience_size?: number; description?: string }> }>(
+          "/search",
+          params
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No targeting categories found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# Targeting Categories: ${type}${subclass ? ` (${subclass})` : ""} (${data.data.length})`, ""];
+        for (const cat of data.data.slice(0, 50)) {
+          lines.push(`- **${cat.name}** (\`${cat.id}\`)${cat.path?.length ? ` — ${cat.path.join(" > ")}` : ""}${cat.audience_size ? ` | ~${formatNumber(cat.audience_size)}` : ""}`);
+        }
+        if (data.data.length > 50) lines.push(`\n_...and ${data.data.length - 50} more_`);
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "categories") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Saved Audience ─────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_saved_audience",
+    {
+      title: "Create Saved Audience",
+      description: `Creates a saved audience (reusable targeting preset) for an ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID
+  - name (string): Audience name
+  - targeting (object): Targeting spec object`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          name: z.string().min(1),
+          targeting: z.record(z.unknown()).describe("Targeting specification"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ ad_account_id, name, targeting, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(`/${ad_account_id}/saved_audiences`, { name, targeting });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return { content: [{ type: "text", text: `Saved audience created.\n\n- **ID**: \`${result.id}\`\n- **Name**: ${name}` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Delete Saved Audience ─────────────────────────────────────────────
+  server.registerTool(
+    "meta_delete_saved_audience",
+    {
+      title: "Delete Saved Audience",
+      description: `Deletes a saved audience.
+
+Args:
+  - audience_id (string): Saved audience ID`,
+      inputSchema: z
+        .object({ audience_id: z.string() })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ audience_id }) => {
+      try {
+        const result = await client.delete<{ success: boolean }>(`/${audience_id}`);
+        return {
+          content: [{ type: "text", text: result.success ? `Saved audience \`${audience_id}\` deleted.` : "Failed to delete." }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+}
