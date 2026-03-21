@@ -2647,4 +2647,230 @@ Returns asset details including IDs, names, and type-specific metadata.`,
       }
     }
   );
+
+  // ─── Create A/B Test (Ad Study) ───────────────────────────────────────────
+  server.registerTool(
+    "meta_create_ad_study",
+    {
+      title: "Create A/B Test (Ad Study)",
+      description: `Creates an A/B test (ad study) to compare campaigns or ad sets.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - name (string): Study name
+  - description (string, optional): Study description
+  - start_time (string): ISO 8601 start time
+  - end_time (string): ISO 8601 end time
+  - type (enum): SPLIT_TEST or HOLDOUT
+  - cells (array): Test cells, each with name, treatment_percentage, and optional campaign_ids/adset_ids
+  - confidence_level (number, default 95): Statistical confidence level (e.g., 90, 95, 99)
+
+Returns: The created study ID.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string().describe("Ad account ID (e.g., act_123456789)"),
+          name: z.string().min(1).describe("Study name"),
+          description: z.string().optional().describe("Study description"),
+          start_time: z.string().describe("ISO 8601 start time"),
+          end_time: z.string().describe("ISO 8601 end time"),
+          type: z.enum(["SPLIT_TEST", "HOLDOUT"]).describe("Study type"),
+          cells: z
+            .array(
+              z.object({
+                name: z.string().describe("Cell name"),
+                treatment_percentage: z.number().min(1).max(100).describe("Traffic percentage for this cell"),
+                campaign_ids: z.array(z.string()).optional().describe("Campaign IDs in this cell"),
+                adset_ids: z.array(z.string()).optional().describe("Ad set IDs in this cell"),
+              })
+            )
+            .min(2)
+            .describe("Test cells (minimum 2)"),
+          confidence_level: z.number().default(95).describe("Statistical confidence level"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, name, description, start_time, end_time, type, cells, confidence_level, response_format }) => {
+      try {
+        const payload: Record<string, unknown> = {
+          name,
+          start_time,
+          end_time,
+          type,
+          cells: cells.map((cell) => {
+            const c: Record<string, unknown> = {
+              name: cell.name,
+              treatment_percentage: cell.treatment_percentage,
+            };
+            if (cell.campaign_ids?.length) c.campaigns = cell.campaign_ids;
+            if (cell.adset_ids?.length) c.adsets = cell.adset_ids;
+            return c;
+          }),
+          confidence_level,
+        };
+        if (description) payload.description = description;
+
+        const result = await client.post<{ id: string }>(
+          `/${ad_account_id}/ad_studies`,
+          payload
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `A/B test created successfully.\n\n- **Study ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Type**: ${type}\n- **Cells**: ${cells.length}`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List A/B Tests (Ad Studies) ──────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_studies",
+    {
+      title: "List A/B Tests (Ad Studies)",
+      description: `Lists A/B tests (ad studies) for a Meta ad account.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - limit (number): Max results (1–50, default 10)
+
+Returns: List of studies with name, type, status, dates, and results.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string().describe("Ad account ID (e.g., act_123456789)"),
+          limit: z.number().int().min(1).max(50).default(10),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ ad_account_id, limit, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<Record<string, unknown>>>(
+          `/${ad_account_id}/ad_studies`,
+          {
+            fields: "id,name,description,start_time,end_time,type,results,cells",
+            limit,
+          }
+        );
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No A/B tests found for this ad account." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# A/B Tests (${data.data.length})`, ""];
+        for (const study of data.data) {
+          lines.push(`## ${study.name ?? "Unnamed"} (\`${study.id}\`)`);
+          if (study.type) lines.push(`- **Type**: ${study.type}`);
+          if (study.description) lines.push(`- **Description**: ${truncateField(study.description as string, 200)}`);
+          if (study.start_time) lines.push(`- **Start**: ${formatDate(study.start_time as string)}`);
+          if (study.end_time) lines.push(`- **End**: ${formatDate(study.end_time as string)}`);
+          if (study.cells && Array.isArray(study.cells)) {
+            lines.push(`- **Cells**: ${(study.cells as Array<Record<string, unknown>>).length}`);
+          }
+          if (study.results) lines.push(`- **Results**: ${JSON.stringify(study.results)}`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "A/B tests") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get A/B Test Results ─────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_study_results",
+    {
+      title: "Get A/B Test Results",
+      description: `Gets detailed results of a specific A/B test (ad study).
+
+Args:
+  - study_id (string): The ad study ID
+
+Returns: Study details including winner, confidence level, and per-cell metrics.`,
+      inputSchema: z
+        .object({
+          study_id: z.string().describe("Ad study ID"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ study_id, response_format }) => {
+      try {
+        const data = await client.get<Record<string, unknown>>(
+          `/${study_id}`,
+          {
+            fields: "id,name,type,start_time,end_time,results,cells,confidence_level",
+          }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# A/B Test Results: ${data.name ?? study_id}`,
+          "",
+        ];
+        if (data.type) lines.push(`- **Type**: ${data.type}`);
+        if (data.confidence_level) lines.push(`- **Confidence Level**: ${data.confidence_level}%`);
+        if (data.start_time) lines.push(`- **Start**: ${formatDate(data.start_time as string)}`);
+        if (data.end_time) lines.push(`- **End**: ${formatDate(data.end_time as string)}`);
+        lines.push("");
+
+        if (data.results) {
+          lines.push(`## Results`);
+          const results = data.results as Record<string, unknown>;
+          if (results.winner) lines.push(`- **Winner**: ${JSON.stringify(results.winner)}`);
+          lines.push(`- **Raw**: ${JSON.stringify(results)}`);
+          lines.push("");
+        }
+
+        if (data.cells && Array.isArray(data.cells)) {
+          lines.push(`## Cells`);
+          for (const cell of data.cells as Array<Record<string, unknown>>) {
+            lines.push(`### ${cell.name ?? "Unnamed Cell"}`);
+            if (cell.treatment_percentage != null) lines.push(`- **Traffic**: ${cell.treatment_percentage}%`);
+            if (cell.campaigns) lines.push(`- **Campaigns**: ${JSON.stringify(cell.campaigns)}`);
+            if (cell.adsets) lines.push(`- **Ad Sets**: ${JSON.stringify(cell.adsets)}`);
+            lines.push("");
+          }
+        }
+
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "A/B test results") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }

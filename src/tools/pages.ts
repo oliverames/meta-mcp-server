@@ -2719,4 +2719,447 @@ Ends the broadcast immediately.`,
       }
     }
   );
+
+  // ─── Get Automated Responses ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_page_automated_responses",
+    {
+      title: "Get Page Automated Messaging Settings",
+      description: `Gets the current automated messaging settings for a Facebook Page.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+
+Returns: Instant reply message, away message, greeting text, and ice breakers configuration.`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const data = await client.getWithToken<Record<string, unknown>>(`/${page_id}`, pageToken, {
+          fields: "instant_reply_message,greeting,ice_breakers",
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# Automated Messaging Settings for Page \`${page_id}\``,
+          "",
+        ];
+
+        if (data.instant_reply_message) {
+          lines.push(`## Instant Reply`);
+          lines.push(`- **Message**: ${data.instant_reply_message}`);
+          lines.push("");
+        }
+
+        if (data.greeting && Array.isArray(data.greeting)) {
+          lines.push(`## Greeting`);
+          for (const g of data.greeting as Array<{ locale: string; text: string }>) {
+            lines.push(`- **${g.locale}**: ${g.text}`);
+          }
+          lines.push("");
+        }
+
+        if (data.ice_breakers && Array.isArray(data.ice_breakers)) {
+          lines.push(`## Ice Breakers`);
+          for (const ib of data.ice_breakers as Array<{ question: string; payload?: string }>) {
+            lines.push(`- ${ib.question}`);
+          }
+          lines.push("");
+        }
+
+        if (lines.length === 2) {
+          lines.push("_No automated messaging settings configured._");
+        }
+
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "automated responses") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Set Instant Reply ────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_set_instant_reply",
+    {
+      title: "Set Page Instant Reply",
+      description: `Sets the instant reply message for a Facebook Page. This is the automatic message sent immediately when someone messages the page.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - message (string): The instant reply message text
+  - enabled (boolean, default true): Whether instant reply is enabled`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          message: z.string().min(1).describe("Instant reply message text"),
+          enabled: z.boolean().default(true).describe("Enable or disable instant reply"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, message, enabled, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<Record<string, unknown>>(
+          `/${page_id}/page_message_responses`,
+          {
+            page_set_instant_reply: { message: { text: message } },
+            instant_reply_enabled: enabled,
+          },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Instant reply ${enabled ? "enabled" : "disabled"} for page \`${page_id}\`.\n\n- **Message**: ${message}`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Set Away Message ─────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_set_away_message",
+    {
+      title: "Set Page Away Message",
+      description: `Sets the away message for a Facebook Page. This is shown when the page is set to away mode.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - message (string): The away message text
+  - enabled (boolean, default true): Whether away mode is enabled`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          message: z.string().min(1).describe("Away message text"),
+          enabled: z.boolean().default(true).describe("Enable or disable away mode"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, message, enabled, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<Record<string, unknown>>(
+          `/${page_id}/page_message_responses`,
+          {
+            page_set_away_mode: { away_mode: { text: message } },
+            away_setting_type: "custom",
+            away_mode_enabled: enabled,
+          },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Away message ${enabled ? "enabled" : "disabled"} for page \`${page_id}\`.\n\n- **Message**: ${message}`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Set Greeting ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_set_greeting",
+    {
+      title: "Set Page Messenger Greeting",
+      description: `Sets the Messenger greeting text for a Facebook Page. This is shown to users before they send their first message.
+
+Requires: meta_list_pages called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - greeting_text (string): The greeting text (max 160 characters)`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          greeting_text: z.string().min(1).max(160).describe("Greeting text shown before first message"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, greeting_text, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<Record<string, unknown>>(
+          `/${page_id}/thread_settings`,
+          {
+            greeting: [{ locale: "default", text: greeting_text }],
+          },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Messenger greeting set for page \`${page_id}\`.\n\n- **Greeting**: ${greeting_text}`,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Publish Page Reel ──────────────────────────────────────────────────
+  server.registerTool(
+    "meta_publish_page_reel",
+    {
+      title: "Publish Facebook Page Reel",
+      description: `Publishes a Reel (short-form video) to a Facebook Page.
+
+Requires: meta_list_pages must be called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - video_url (string): Public URL of the video file
+  - description (string, optional): Reel description/caption
+  - title (string, optional): Reel title
+
+Returns: The reel/video ID on success.
+
+Notes:
+  - Video must be hosted on a publicly accessible server
+  - FB Reels use a simpler single-step flow (no container polling needed)`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          video_url: z.string().url().describe("Public URL of the video file"),
+          description: z.string().optional().describe("Reel description/caption"),
+          title: z.string().optional().describe("Reel title"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, video_url, description, title, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const fields: Record<string, unknown> = {
+          upload_phase: "finish",
+          source: video_url,
+        };
+        if (description) fields.description = description;
+        if (title) fields.title = title;
+
+        const result = await client.post<{ id: string }>(
+          `/${page_id}/video_reels`,
+          fields,
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Reel published to Facebook Page.\n\n- **Reel/Video ID**: \`${result.id}\``,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Cross-Post to Facebook + Instagram ─────────────────────────────────
+  server.registerTool(
+    "meta_cross_post",
+    {
+      title: "Cross-Post to Facebook Page & Instagram",
+      description: `Publishes the same content to both a Facebook Page and Instagram simultaneously.
+
+Requires: meta_list_pages must be called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - ig_account_id (string): Instagram professional account ID
+  - message (string): Text content (used as FB post text and IG caption)
+  - image_url (string, optional): Public image URL — creates photo posts on both platforms
+  - video_url (string, optional): Public video URL — creates Reels on both platforms
+
+Logic:
+  - If image_url: FB photo post + IG photo post (parallel)
+  - If video_url: FB Reel + IG Reel (parallel)
+  - If text only: FB text post only (IG doesn't support text-only posts)
+  - Uses Promise.allSettled so one platform failing doesn't block the other
+
+Returns: Results from both platforms (which succeeded, which failed).`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          ig_account_id: z.string().describe("Instagram professional account ID"),
+          message: z.string().min(1).describe("Text content / caption for both platforms"),
+          image_url: z.string().url().optional().describe("Public image URL for photo posts"),
+          video_url: z.string().url().optional().describe("Public video URL for Reels"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ page_id, ig_account_id, message, image_url, video_url, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+
+        const fbPromise = (async (): Promise<{ platform: string; id: string }> => {
+          if (image_url) {
+            const result = await client.post<{ id: string; post_id?: string }>(
+              `/${page_id}/photos`,
+              { url: image_url, message },
+              pageToken
+            );
+            return { platform: "Facebook Photo", id: result.post_id ?? result.id };
+          } else if (video_url) {
+            const result = await client.post<{ id: string }>(
+              `/${page_id}/video_reels`,
+              { upload_phase: "finish", source: video_url, description: message },
+              pageToken
+            );
+            return { platform: "Facebook Reel", id: result.id };
+          } else {
+            const result = await client.post<{ id: string }>(
+              `/${page_id}/feed`,
+              { message },
+              pageToken
+            );
+            return { platform: "Facebook Post", id: result.id };
+          }
+        })();
+
+        const igPromise = (async (): Promise<{ platform: string; id: string } | null> => {
+          if (image_url) {
+            const container = await client.post<{ id: string }>(
+              `/${ig_account_id}/media`,
+              { image_url, caption: message }
+            );
+            const result = await client.post<{ id: string }>(
+              `/${ig_account_id}/media_publish`,
+              { creation_id: container.id }
+            );
+            return { platform: "Instagram Photo", id: result.id };
+          } else if (video_url) {
+            const container = await client.post<{ id: string }>(
+              `/${ig_account_id}/media`,
+              { media_type: "REELS", video_url, caption: message, share_to_feed: true }
+            );
+            const statusCode = await client.pollContainerStatus(container.id, "instagram");
+            if (statusCode !== "FINISHED") {
+              throw new Error(`Instagram container status: ${statusCode} (not FINISHED)`);
+            }
+            const result = await client.post<{ id: string }>(
+              `/${ig_account_id}/media_publish`,
+              { creation_id: container.id }
+            );
+            return { platform: "Instagram Reel", id: result.id };
+          } else {
+            return null;
+          }
+        })();
+
+        const [fbResult, igResult] = await Promise.allSettled([fbPromise, igPromise]);
+
+        if (response_format === "json") {
+          const json = {
+            facebook: fbResult.status === "fulfilled" ? { success: true, ...fbResult.value } : { success: false, error: (fbResult as PromiseRejectedResult).reason?.message ?? String((fbResult as PromiseRejectedResult).reason) },
+            instagram: igResult.status === "fulfilled" ? (igResult.value ? { success: true, ...igResult.value } : { success: true, skipped: true, reason: "Text-only posts not supported on Instagram" }) : { success: false, error: (igResult as PromiseRejectedResult).reason?.message ?? String((igResult as PromiseRejectedResult).reason) },
+          };
+          return { content: [{ type: "text", text: JSON.stringify(json, null, 2) }] };
+        }
+
+        const lines = ["# Cross-Post Results", ""];
+
+        if (fbResult.status === "fulfilled") {
+          lines.push(`**${fbResult.value.platform}**: Published — ID \`${fbResult.value.id}\``);
+        } else {
+          lines.push(`**Facebook**: Failed — ${(fbResult as PromiseRejectedResult).reason?.message ?? "Unknown error"}`);
+        }
+
+        if (igResult.status === "fulfilled") {
+          if (igResult.value) {
+            lines.push(`**${igResult.value.platform}**: Published — ID \`${igResult.value.id}\``);
+          } else {
+            lines.push("**Instagram**: Skipped (text-only posts not supported on Instagram)");
+          }
+        } else {
+          lines.push(`**Instagram**: Failed — ${(igResult as PromiseRejectedResult).reason?.message ?? "Unknown error"}`);
+        }
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }

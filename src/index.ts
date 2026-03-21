@@ -11,6 +11,7 @@ import { registerAdLibraryTools } from "./tools/ad_library.js";
 import { registerConversionTools } from "./tools/conversions.js";
 import { registerUtilityTools } from "./tools/utility.js";
 import { registerChartTools } from "./tools/charts.js";
+import { registerCommerceTools } from "./tools/commerce.js";
 
 const token = process.env.META_ACCESS_TOKEN ?? "";
 const threadsToken = process.env.THREADS_ACCESS_TOKEN;
@@ -32,6 +33,7 @@ registerAdLibraryTools(server, client);
 registerConversionTools(server, client);
 registerUtilityTools(server, client);
 registerChartTools(server);
+registerCommerceTools(server, client);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
