@@ -23,6 +23,12 @@
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/meta-mcp-server"><img src="https://img.shields.io/npm/v/meta-mcp-server?style=flat-square&color=f5a542" alt="npm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f5a542?style=flat-square" alt="License"></a>
+  <a href="https://www.buymeacoffee.com/oliverames"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-f5a542?style=flat-square&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
+</p>
+
 <br>
 
 <p align="center">
@@ -685,19 +691,22 @@ Conventions: Zod `.strict()` schemas, `response_format` parameter on read tools,
 <br>
 
 <p align="center">
-  Built by <a href="https://github.com/oliverames">Oliver Ames</a> with <a href="https://claude.ai/claude-code">Claude Code</a>
+  <sub>Not affiliated with or endorsed by Meta Platforms, Inc.</sub>
+</p>
+
+---
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/oliverames">
+    <img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-f5a542?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee">
+  </a>
 </p>
 
 <p align="center">
   <sub>
-    Powered by <a href="https://modelcontextprotocol.io">Model Context Protocol</a> · <a href="https://developers.facebook.com/docs/graph-api">Meta Graph API</a> · <a href="https://developers.facebook.com/docs/threads">Threads API</a> · <a href="https://www.typescriptlang.org">TypeScript</a> · <a href="https://zod.dev">Zod</a> · <a href="https://vitest.dev">Vitest</a>
+    Built by <a href="https://ames.consulting">Oliver Ames</a> in Vermont
+    &bull; <a href="https://github.com/oliverames">GitHub</a>
+    &bull; <a href="https://linkedin.com/in/oliverames">LinkedIn</a>
+    &bull; <a href="https://bsky.app/profile/oliverames.bsky.social">Bluesky</a>
   </sub>
-</p>
-
-<p align="center">
-  <sub>Not affiliated with or endorsed by Meta Platforms, Inc.</sub>
-</p>
-
-<p align="center">
-  <a href="https://github.com/oliverames/meta-mcp-server/blob/main/LICENSE">MIT License</a>
 </p>
