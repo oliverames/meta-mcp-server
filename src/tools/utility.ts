@@ -162,4 +162,89 @@ Returns: Token validity, number of cached page tokens, Threads token status, and
       }
     }
   );
+
+  // ─── Search Places ──────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_search_places",
+    {
+      title: "Search Facebook Places",
+      description: `Searches for Facebook Places (locations) by name or coordinates.
+
+Use this to get a location_id for tagging posts, Instagram photos, or Threads.
+
+Args:
+  - q (string, optional): Search query (e.g., "Central Park", "Starbucks NYC")
+  - center (string, optional): Latitude,longitude center point (e.g., "40.7829,-73.9654")
+  - distance (number, optional): Search radius in meters (default: 1000, max: 50000)
+  - limit (number): Max results (1–100, default 20)
+  - categories (string[], optional): Filter by category — e.g., ["FOOD_BEVERAGE", "HOTEL_LODGING", "SHOPPING_RETAIL"]
+
+Returns: Place IDs, names, addresses, and coordinates.
+
+Note: Provide at least q or center. Both can be combined for location-aware name search.`,
+      inputSchema: z
+        .object({
+          q: z.string().optional().describe("Search query"),
+          center: z.string().optional().describe("Lat,lng (e.g., '40.7829,-73.9654')"),
+          distance: z.number().int().min(1).max(50000).default(1000).describe("Search radius in meters"),
+          limit: z.number().int().min(1).max(100).default(20),
+          categories: z.array(z.string()).optional().describe("Category filters"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ q, center, distance, limit, categories, response_format }) => {
+      try {
+        if (!q && !center) {
+          return { content: [{ type: "text", text: "Error: Provide at least 'q' (search query) or 'center' (lat,lng)." }], isError: true };
+        }
+
+        const params: Record<string, unknown> = {
+          type: "place",
+          fields: "id,name,location,category_list,checkins,overall_star_rating",
+          limit,
+        };
+        if (q) params.q = q;
+        if (center) {
+          params.center = center;
+          params.distance = distance;
+        }
+        if (categories?.length) params.categories = JSON.stringify(categories);
+
+        const data = await client.get<{ data: Array<{
+          id: string;
+          name: string;
+          location?: { city?: string; state?: string; country?: string; street?: string; zip?: string; latitude?: number; longitude?: number };
+          category_list?: Array<{ id: string; name: string }>;
+          checkins?: number;
+          overall_star_rating?: number;
+        }> }>("/search", params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No places found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data.data, null, 2) }] };
+        }
+
+        const lines = [`# Places (${data.data.length})`, ""];
+        for (const place of data.data) {
+          const loc = place.location;
+          const addr = loc ? [loc.street, loc.city, loc.state, loc.country].filter(Boolean).join(", ") : "";
+          lines.push(`## ${place.name} (\`${place.id}\`)`);
+          if (addr) lines.push(`- **Address**: ${addr}`);
+          if (loc?.latitude) lines.push(`- **Coords**: ${loc.latitude}, ${loc.longitude}`);
+          if (place.category_list?.length) lines.push(`- **Categories**: ${place.category_list.map(c => c.name).join(", ")}`);
+          if (place.checkins) lines.push(`- **Checkins**: ${place.checkins}`);
+          if (place.overall_star_rating) lines.push(`- **Rating**: ${place.overall_star_rating}/5`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }

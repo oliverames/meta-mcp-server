@@ -989,7 +989,7 @@ Note: Results are limited to the authenticated user's content and public threads
     async ({ threads_user_id, q, limit, response_format }) => {
       try {
         const data = await client.threadsGet<MetaPaginatedResponse<ThreadsMedia>>(
-          `/${threads_user_id}/threads`,
+          `/${threads_user_id}/threads_search`,
           { fields: THREADS_MEDIA_FIELDS, limit, q }
         );
 
@@ -1122,6 +1122,124 @@ Args:
         }
 
         return { content: [{ type: "text", text: `Link thread published.\n\n- **Media ID**: \`${result.id}\`` }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Threads Followers ──────────────────────────────────────────────
+  server.registerTool(
+    "threads_get_followers",
+    {
+      title: "Get Threads Followers",
+      description: `Lists followers of the authenticated Threads user.
+
+Args:
+  - threads_user_id (string): Threads user ID
+  - limit (number): Max results (1–100, default 25)
+  - after (string, optional): Pagination cursor
+
+Returns: User IDs, usernames, and profile picture URLs of followers.
+
+Note: Requires threads_basic scope. Only returns users who have allowed their followers list to be visible.`,
+      inputSchema: z
+        .object({
+          threads_user_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ threads_user_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,username,threads_profile_picture_url",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.threadsGet<MetaPaginatedResponse<{
+          id: string;
+          username?: string;
+          threads_profile_picture_url?: string;
+        }>>(`/${threads_user_id}/followers`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No followers found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Threads Followers (${data.data.length} shown)`, ""];
+        for (const user of data.data) {
+          lines.push(`- **@${user.username ?? "unknown"}** (\`${user.id}\`)`);
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Threads Following ──────────────────────────────────────────────
+  server.registerTool(
+    "threads_get_following",
+    {
+      title: "Get Threads Following",
+      description: `Lists accounts that the authenticated Threads user is following.
+
+Args:
+  - threads_user_id (string): Threads user ID
+  - limit (number): Max results (1–100, default 25)
+  - after (string, optional): Pagination cursor
+
+Returns: User IDs, usernames, and profile pictures of followed accounts.`,
+      inputSchema: z
+        .object({
+          threads_user_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ threads_user_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,username,threads_profile_picture_url",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.threadsGet<MetaPaginatedResponse<{
+          id: string;
+          username?: string;
+          threads_profile_picture_url?: string;
+        }>>(`/${threads_user_id}/following`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No following found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Threads Following (${data.data.length} shown)`, ""];
+        for (const user of data.data) {
+          lines.push(`- **@${user.username ?? "unknown"}** (\`${user.id}\`)`);
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (error) {
         return errorResult(error);
       }

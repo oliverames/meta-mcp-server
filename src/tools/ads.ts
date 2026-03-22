@@ -2938,4 +2938,400 @@ Returns: Study details including winner, confidence level, and per-cell metrics.
       }
     }
   );
+
+  // ─── List Lead Gen Forms ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_leadgen_forms",
+    {
+      title: "List Lead Gen Forms",
+      description: `Lists lead generation forms for a Facebook Page.
+
+Lead forms are used with OUTCOME_LEADS campaigns to collect user information.
+
+Requires: meta_list_pages must be called first to load page tokens.
+
+Args:
+  - page_id (string): Facebook Page ID
+  - limit (number): Max results (1–100, default 20)
+
+Returns form IDs, names, status, and creation times.`,
+      inputSchema: z
+        .object({
+          page_id: z.string().describe("Facebook Page ID"),
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ page_id, limit, after, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const params: Record<string, unknown> = {
+          fields: "id,name,status,created_time,leads_count,locale,questions",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.getWithToken<MetaPaginatedResponse<{
+          id: string;
+          name: string;
+          status: string;
+          created_time?: string;
+          leads_count?: number;
+          locale?: string;
+          questions?: Array<{ key: string; label: string; type: string }>;
+        }>>(`/${page_id}/leadgen_forms`, pageToken, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No lead gen forms found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Lead Gen Forms (${data.data.length})`, ""];
+        for (const form of data.data) {
+          lines.push(`## ${form.name} (\`${form.id}\`)`);
+          lines.push(`- **Status**: ${form.status}`);
+          if (form.leads_count !== undefined) lines.push(`- **Leads**: ${formatNumber(form.leads_count)}`);
+          if (form.locale) lines.push(`- **Locale**: ${form.locale}`);
+          if (form.created_time) lines.push(`- **Created**: ${formatDate(form.created_time)}`);
+          if (form.questions?.length) {
+            lines.push(`- **Questions**: ${form.questions.map(q => q.label || q.key).join(", ")}`);
+          }
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "lead gen forms") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Lead Gen Form Leads ────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_leadgen_leads",
+    {
+      title: "Get Leads from Form",
+      description: `Gets submitted leads from a lead generation form.
+
+Requires: meta_list_pages must be called first to load page tokens.
+
+Args:
+  - form_id (string): Lead gen form ID (from meta_list_leadgen_forms)
+  - page_id (string): Page ID (for authentication)
+  - limit (number): Max results (1–100, default 25)
+  - after (string, optional): Pagination cursor
+
+Returns lead data including field values, creation time, and ad info.`,
+      inputSchema: z
+        .object({
+          form_id: z.string().describe("Lead gen form ID"),
+          page_id: z.string().describe("Page ID (for token)"),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ form_id, page_id, limit, after, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const params: Record<string, unknown> = {
+          fields: "id,created_time,field_data,ad_id,ad_name,campaign_id,campaign_name,adset_id,adset_name",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.getWithToken<MetaPaginatedResponse<{
+          id: string;
+          created_time: string;
+          field_data: Array<{ name: string; values: string[] }>;
+          ad_id?: string;
+          ad_name?: string;
+          campaign_id?: string;
+          campaign_name?: string;
+          adset_id?: string;
+          adset_name?: string;
+        }>>(`/${form_id}/leads`, pageToken, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No leads found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const nextCursor = data.paging?.cursors?.after;
+        const lines = [`# Leads (${data.data.length})`, ""];
+        for (const lead of data.data) {
+          lines.push(`## Lead \`${lead.id}\` (${formatDate(lead.created_time)})`);
+          for (const field of lead.field_data) {
+            lines.push(`- **${field.name}**: ${field.values.join(", ")}`);
+          }
+          if (lead.campaign_name) lines.push(`- _Campaign: ${lead.campaign_name}_`);
+          if (lead.ad_name) lines.push(`- _Ad: ${lead.ad_name}_`);
+          lines.push("");
+        }
+        if (nextCursor) lines.push(buildPaginationNote(data.data.length, nextCursor));
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "leads") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Ad Rule ─────────────────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_ad_rule",
+    {
+      title: "Get Ad Rule Details",
+      description: `Gets details for a specific automated ad rule.
+
+Args:
+  - rule_id (string): Ad rule ID`,
+      inputSchema: z
+        .object({
+          rule_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ rule_id, response_format }) => {
+      try {
+        const data = await client.get<{
+          id: string;
+          name: string;
+          status: string;
+          evaluation_spec?: Record<string, unknown>;
+          execution_spec?: Record<string, unknown>;
+          schedule_spec?: Record<string, unknown>;
+          created_time?: string;
+          updated_time?: string;
+        }>(`/${rule_id}`, {
+          fields: "id,name,status,evaluation_spec,execution_spec,schedule_spec,created_time,updated_time",
+        });
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [
+          `# Rule: ${data.name}`,
+          "",
+          `- **ID**: \`${data.id}\``,
+          `- **Status**: ${data.status}`,
+          data.evaluation_spec ? `- **Evaluation**: ${JSON.stringify(data.evaluation_spec, null, 2)}` : "",
+          data.execution_spec ? `- **Action**: ${JSON.stringify(data.execution_spec, null, 2)}` : "",
+          data.schedule_spec ? `- **Schedule**: ${JSON.stringify(data.schedule_spec, null, 2)}` : "",
+          data.created_time ? `- **Created**: ${formatDate(data.created_time)}` : "",
+          data.updated_time ? `- **Updated**: ${formatDate(data.updated_time)}` : "",
+        ].filter(Boolean);
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Get Minimum Budgets ──────────────────────────────────────────────
+  server.registerTool(
+    "meta_get_minimum_budgets",
+    {
+      title: "Get Minimum Ad Budgets",
+      description: `Gets the minimum daily and lifetime budgets for an ad account by currency and bid strategy.
+
+Essential to check before creating ad sets — using a budget below the minimum causes API errors.
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+
+Returns: Minimum budget requirements per bid strategy.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, response_format }) => {
+      try {
+        const data = await client.get<{ data: Array<{
+          currency: string;
+          min_daily_budget_imp: number;
+          min_daily_budget_low_freq: number;
+          min_daily_budget_high_freq: number;
+        }> }>(`/${ad_account_id}/minimum_budgets`, {});
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No minimum budget data available." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Minimum Budgets for \`${ad_account_id}\``, ""];
+        for (const row of data.data) {
+          lines.push(`## ${row.currency}`);
+          lines.push(`- **Impressions**: ${formatNumber(row.min_daily_budget_imp)} cents/day`);
+          lines.push(`- **Low Frequency Events**: ${formatNumber(row.min_daily_budget_low_freq)} cents/day`);
+          lines.push(`- **High Frequency Events**: ${formatNumber(row.min_daily_budget_high_freq)} cents/day`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Offline Event Sets ──────────────────────────────────────────
+  server.registerTool(
+    "meta_list_offline_event_sets",
+    {
+      title: "List Offline Event Sets",
+      description: `Lists offline conversion event sets for an ad account.
+
+Offline event sets track conversions that happen outside of digital channels (in-store purchases, phone orders, etc.).
+
+Args:
+  - ad_account_id (string): Ad account ID (e.g., act_123456789)
+  - limit (number): Max results (1–100, default 25)
+  - after (string, optional): Pagination cursor
+
+Returns: Event set IDs, names, and configuration.`,
+      inputSchema: z
+        .object({
+          ad_account_id: z.string(),
+          limit: z.number().int().min(1).max(100).default(25),
+          after: z.string().optional(),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ ad_account_id, limit, after, response_format }) => {
+      try {
+        const params: Record<string, unknown> = {
+          fields: "id,name,description,is_auto_assigned,event_stats,last_fired_time",
+          limit,
+        };
+        if (after) params.after = after;
+
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string;
+          name: string;
+          description?: string;
+          is_auto_assigned?: boolean;
+          event_stats?: string;
+          last_fired_time?: string;
+        }>>(`/${ad_account_id}/offline_conversion_data_sets`, params);
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No offline event sets found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Offline Event Sets (${data.data.length})`, ""];
+        for (const es of data.data) {
+          lines.push(`## ${es.name} (\`${es.id}\`)`);
+          if (es.description) lines.push(`- **Description**: ${es.description}`);
+          if (es.last_fired_time) lines.push(`- **Last Event**: ${formatDate(es.last_fired_time)}`);
+          if (es.is_auto_assigned !== undefined) lines.push(`- **Auto-assigned**: ${es.is_auto_assigned}`);
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Send Offline Conversion Event ───────────────────────────────────
+  server.registerTool(
+    "meta_send_offline_event",
+    {
+      title: "Send Offline Conversion Event",
+      description: `Sends an offline conversion event to a Meta offline event set.
+
+Used for tracking in-store purchases, phone orders, or other offline conversions.
+
+Args:
+  - event_set_id (string): Offline event set ID (from meta_list_offline_event_sets)
+  - event_name (string): Event name (e.g., "Purchase", "Lead")
+  - event_time (number): Unix timestamp of the conversion
+  - user_data (object): Customer match data — at least one of: email, phone, fn (first name), ln (last name), ct (city), st (state), zip, country, external_id. All PII must be SHA256 hashed.
+  - custom_data (object, optional): { currency, value, content_name, order_id }
+  - upload_tag (string, optional): Tag for grouping uploads
+
+Returns: Number of events received.`,
+      inputSchema: z
+        .object({
+          event_set_id: z.string().describe("Offline event set ID"),
+          event_name: z.string().describe("Event name (e.g., 'Purchase')"),
+          event_time: z.number().describe("Unix timestamp"),
+          user_data: z.record(z.string()).describe("Customer match data (hashed PII)"),
+          custom_data: z.object({
+            currency: z.string().optional(),
+            value: z.number().optional(),
+            content_name: z.string().optional(),
+            order_id: z.string().optional(),
+          }).optional(),
+          upload_tag: z.string().optional().describe("Tag for grouping uploads"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ event_set_id, event_name, event_time, user_data, custom_data, upload_tag, response_format }) => {
+      try {
+        const event: Record<string, unknown> = {
+          match_keys: user_data,
+          event_name,
+          event_time,
+        };
+        if (custom_data?.currency) event.currency = custom_data.currency;
+        if (custom_data?.value !== undefined) event.value = custom_data.value;
+        if (custom_data?.content_name) event.content_name = custom_data.content_name;
+        if (custom_data?.order_id) event.order_id = custom_data.order_id;
+
+        const payload: Record<string, unknown> = {
+          data: [event],
+        };
+        if (upload_tag) payload.upload_tag = upload_tag;
+
+        const result = await client.post<{ num_processed_entries: number; entries_processed?: number }>(
+          `/${event_set_id}/events`,
+          payload
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Offline event sent.\n\n- **Events Processed**: ${result.num_processed_entries ?? result.entries_processed ?? "unknown"}\n- **Event Name**: ${event_name}\n- **Event Set**: \`${event_set_id}\``,
+          }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
 }

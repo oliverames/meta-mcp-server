@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MetaApiClient } from "../services/api.js";
 import { errorResult, truncate, truncateField, buildPaginationNote, ResponseFormatSchema } from "../services/utils.js";
+import { MetaPaginatedResponse } from "../types.js";
 
 interface ProductCatalog {
   id: string;
@@ -34,11 +35,6 @@ interface ProductSet {
   name?: string;
   filter?: Record<string, unknown>;
   product_count?: number;
-}
-
-interface MetaPaginatedResponse<T> {
-  data: T[];
-  paging?: { cursors?: { after?: string; before?: string }; next?: string };
 }
 
 const CATALOG_FIELDS = "id,name,product_count,vertical,business";
@@ -526,6 +522,117 @@ Returns product set IDs, names, filters, and product counts.`,
 
         lines.push(buildPaginationNote(data.data.length, data.paging?.cursors?.after));
         return { content: [{ type: "text", text: truncate(lines.join("\n"), "product sets") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── List Product Feeds ──────────────────────────────────────────────────
+  server.registerTool(
+    "meta_list_product_feeds",
+    {
+      title: "List Product Feeds",
+      description: `Lists product feeds for a catalog. Feeds are automated data sources that keep catalogs up-to-date.
+
+Args:
+  - catalog_id (string): Product catalog ID
+  - limit (number): Max results (1–100, default 25)
+
+Returns feed IDs, names, schedules, and latest upload status.`,
+      inputSchema: z
+        .object({
+          catalog_id: z.string().describe("Product catalog ID"),
+          limit: z.number().min(1).max(100).default(25),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ catalog_id, limit, response_format }) => {
+      try {
+        const data = await client.get<MetaPaginatedResponse<{
+          id: string;
+          name?: string;
+          created_time?: string;
+          latest_upload?: { end_time?: string; status?: string; num_uploaded?: number; num_detected_items?: number };
+          schedule?: { interval?: string; url?: string };
+        }>>(`/${catalog_id}/product_feeds`, {
+          fields: "id,name,created_time,latest_upload,schedule",
+          limit: String(limit),
+        });
+
+        if (!data.data?.length) {
+          return { content: [{ type: "text", text: "No product feeds found." }] };
+        }
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        }
+
+        const lines = [`# Product Feeds (${data.data.length})`, ""];
+        for (const feed of data.data) {
+          lines.push(`## ${feed.name ?? "Unnamed"} (\`${feed.id}\`)`);
+          if (feed.schedule?.interval) lines.push(`- **Schedule**: ${feed.schedule.interval}`);
+          if (feed.schedule?.url) lines.push(`- **URL**: ${truncateField(feed.schedule.url, 100)}`);
+          if (feed.latest_upload) {
+            const u = feed.latest_upload;
+            lines.push(`- **Last Upload**: ${u.status ?? "unknown"}${u.end_time ? ` (${u.end_time})` : ""}${u.num_uploaded ? ` — ${u.num_uploaded} items` : ""}`);
+          }
+          lines.push("");
+        }
+        return { content: [{ type: "text", text: truncate(lines.join("\n"), "product feeds") }] };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  // ─── Create Product Feed ─────────────────────────────────────────────────
+  server.registerTool(
+    "meta_create_product_feed",
+    {
+      title: "Create Product Feed",
+      description: `Creates a new product feed for a catalog to automatically sync products from a URL.
+
+Args:
+  - catalog_id (string): Product catalog ID
+  - name (string): Feed name
+  - schedule_url (string): URL of the product feed file (CSV, TSV, XML)
+  - schedule_interval (string): How often to fetch — HOURLY, DAILY, WEEKLY, MONTHLY
+
+Returns the new feed ID.`,
+      inputSchema: z
+        .object({
+          catalog_id: z.string().describe("Product catalog ID"),
+          name: z.string().min(1).describe("Feed name"),
+          schedule_url: z.string().url().describe("Product feed URL (CSV/TSV/XML)"),
+          schedule_interval: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).describe("Fetch interval"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ catalog_id, name, schedule_url, schedule_interval, response_format }) => {
+      try {
+        const result = await client.post<{ id: string }>(
+          `/${catalog_id}/product_feeds`,
+          {
+            name,
+            schedule: { interval: schedule_interval, url: schedule_url },
+          }
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Product feed created.\n\n- **Feed ID**: \`${result.id}\`\n- **Name**: ${name}\n- **Interval**: ${schedule_interval}`,
+          }],
+        };
       } catch (error) {
         return errorResult(error);
       }

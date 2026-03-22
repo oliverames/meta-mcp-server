@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/oliverames/meta-mcp-server/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>&nbsp;
-  <img src="https://img.shields.io/badge/tools-187-6C47FF?style=flat-square" alt="187 Tools">&nbsp;
+  <img src="https://img.shields.io/badge/tools-200-6C47FF?style=flat-square" alt="200 Tools">&nbsp;
   <img src="https://img.shields.io/badge/tests-52_passing-34D058?style=flat-square" alt="52 Tests Passing">&nbsp;
   <img src="https://img.shields.io/badge/Graph_API-v21.0-1877F2?style=flat-square" alt="Graph API v21.0">&nbsp;
   <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
@@ -32,7 +32,7 @@
 <br>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#what-you-can-do">What You Can Do</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#complete-tool-reference">All 187 Tools</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#configuration">Configuration</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#architecture">Architecture</a>
+  <a href="#quick-start">Quick Start</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#what-you-can-do">What You Can Do</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#complete-tool-reference">All 200 Tools</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#configuration">Configuration</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#architecture">Architecture</a>
 </p>
 
 <br>
@@ -65,7 +65,7 @@ Add to your MCP client config:
 }
 ```
 
-That's it. Your AI assistant now has access to 187 Meta tools.
+That's it. Your AI assistant now has access to 200 Meta tools.
 
 > Need a token? Go to the [Graph API Explorer](https://developers.facebook.com/tools/explorer), select your app, and generate one. See [Configuration](#configuration) for details.
 

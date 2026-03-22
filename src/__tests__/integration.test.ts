@@ -9,6 +9,7 @@ function sendMcpRequest(request: object): Promise<object> {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    let resolved = false;
     let stdout = "";
     proc.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -18,6 +19,7 @@ function sendMcpRequest(request: object): Promise<object> {
         try {
           const parsed = JSON.parse(line);
           if (parsed.id === (request as any).id) {
+            resolved = true;
             proc.kill();
             resolve(parsed);
             return;
@@ -26,11 +28,13 @@ function sendMcpRequest(request: object): Promise<object> {
       }
     });
 
-    proc.stderr.on("data", (chunk) => {
+    proc.stderr.on("data", () => {
       // Ignore stderr (MCP SDK may log here)
     });
 
-    proc.on("error", reject);
+    proc.on("error", (err) => {
+      if (!resolved) reject(err);
+    });
 
     // Send initialization first, then the actual request
     const init = JSON.stringify({
@@ -48,12 +52,14 @@ function sendMcpRequest(request: object): Promise<object> {
 
     // After a short delay, send the initialized notification and actual request
     setTimeout(() => {
+      if (resolved || proc.killed) return;
       proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
       proc.stdin.write(JSON.stringify(request) + "\n");
     }, 200);
 
     // Timeout after 10 seconds
     setTimeout(() => {
+      if (resolved) return;
       proc.kill();
       reject(new Error(`Timeout waiting for response. Got: ${stdout}`));
     }, 10000);
@@ -78,7 +84,7 @@ describe("MCP Server Integration", () => {
     expect((response as any).result.capabilities.tools).toBeDefined();
   });
 
-  it("lists all 187 tools via tools/list", async () => {
+  it("lists all 200 tools via tools/list", async () => {
     const response = await sendMcpRequest({
       jsonrpc: "2.0",
       id: 1,
@@ -89,7 +95,7 @@ describe("MCP Server Integration", () => {
     const tools = (response as any).result?.tools;
     expect(tools).toBeDefined();
     expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBe(187);
+    expect(tools.length).toBe(200);
 
     // Verify key tools exist
     const names = tools.map((t: any) => t.name);

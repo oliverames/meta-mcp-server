@@ -904,6 +904,7 @@ Requires pages_manage_metadata permission.`,
 
 Args:
   - post_id (string): Post ID (format: {page_id}_{post_id})
+  - page_id (string): Page ID (for authentication — call meta_list_pages first)
   - limit (number): Max comments (1–100, default 25)
   - order (string): 'chronological' or 'reverse_chronological'
   - after (string, optional): Pagination cursor
@@ -911,6 +912,7 @@ Args:
       inputSchema: z
         .object({
           post_id: z.string(),
+          page_id: z.string().describe("Page ID (call meta_list_pages first)"),
           limit: z.number().int().min(1).max(100).default(25),
           order: z.enum(["chronological", "reverse_chronological"]).default("reverse_chronological"),
           filter: z.enum(["toplevel", "stream"]).default("toplevel"),
@@ -925,8 +927,9 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ post_id, limit, order, filter, after, response_format }) => {
+    async ({ post_id, page_id, limit, order, filter, after, response_format }) => {
       try {
+        const pageToken = client.requirePageToken(page_id);
         const params: Record<string, unknown> = {
           fields: "id,message,from,created_time,like_count,comment_count,parent",
           limit,
@@ -935,7 +938,7 @@ Args:
         };
         if (after) params.after = after;
 
-        const data = await client.get<MetaPaginatedResponse<{
+        const data = await client.getWithToken<MetaPaginatedResponse<{
           id: string;
           message: string;
           from: { name: string; id: string };
@@ -943,7 +946,7 @@ Args:
           like_count?: number;
           comment_count?: number;
           parent?: { id: string };
-        }>>(`/${post_id}/comments`, params);
+        }>>(`/${post_id}/comments`, pageToken, params);
 
         if (!data.data?.length) {
           return { content: [{ type: "text", text: "No comments on this post." }] };
@@ -3001,8 +3004,8 @@ Notes:
       try {
         const pageToken = client.requirePageToken(page_id);
         const fields: Record<string, unknown> = {
-          upload_phase: "finish",
           source: video_url,
+          video_state: "PUBLISHED",
         };
         if (description) fields.description = description;
         if (title) fields.title = title;
@@ -3084,7 +3087,7 @@ Returns: Results from both platforms (which succeeded, which failed).`,
           } else if (video_url) {
             const result = await client.post<{ id: string }>(
               `/${page_id}/video_reels`,
-              { upload_phase: "finish", source: video_url, description: message },
+              { source: video_url, video_state: "PUBLISHED", description: message },
               pageToken
             );
             return { platform: "Facebook Reel", id: result.id };

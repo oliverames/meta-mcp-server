@@ -22,7 +22,7 @@ const client = new MetaApiClient(token, threadsToken);
 
 const server = new McpServer({
   name: "meta-mcp-server",
-  version: "1.0.0",
+  version: "2.0.0",
 });
 
 registerPageTools(server, client);
