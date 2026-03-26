@@ -1,5 +1,3 @@
-<br>
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png">
@@ -16,38 +14,34 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/oliverames/meta-mcp-server/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>&nbsp;
-  <img src="https://img.shields.io/badge/tools-200-6C47FF?style=flat-square" alt="200 Tools">&nbsp;
-  <img src="https://img.shields.io/badge/tests-52_passing-34D058?style=flat-square" alt="52 Tests Passing">&nbsp;
-  <img src="https://img.shields.io/badge/Graph_API-v21.0-1877F2?style=flat-square" alt="Graph API v21.0">&nbsp;
-  <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <code>200 tools</code> &bull;
+  <code>7 platforms</code> &bull;
+  <code>Graph API v21.0</code>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/meta-mcp-server"><img src="https://img.shields.io/npm/v/meta-mcp-server?style=flat-square&color=f5a542" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@oliverames/meta-mcp-server"><img src="https://img.shields.io/npm/v/@oliverames/meta-mcp-server?style=flat-square&color=f5a542" alt="npm"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f5a542?style=flat-square" alt="License"></a>
   <a href="https://www.buymeacoffee.com/oliverames"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-f5a542?style=flat-square&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 </p>
 
-<br>
-
 <p align="center">
-  <a href="#quick-start">Quick Start</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#what-you-can-do">What You Can Do</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#complete-tool-reference">All 200 Tools</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#configuration">Configuration</a>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<a href="#architecture">Architecture</a>
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#what-you-can-do">What You Can Do</a> &bull;
+  <a href="#complete-tool-reference">All 200 Tools</a> &bull;
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="#architecture">Architecture</a>
 </p>
-
-<br>
 
 ---
 
-<br>
+## Why This Exists
+
+Social media management across Meta's platforms — Facebook Pages, Instagram, Threads, Ads Manager, Commerce — requires juggling multiple dashboards, each with its own API quirks and token flows. This server consolidates the entire Meta Graph API surface into a single MCP interface, so your AI assistant can publish content, analyze performance, manage ad campaigns, and moderate engagement across all platforms in one conversation.
+
+Every tool returns actionable error messages — not cryptic API codes. Token expired? You get a regeneration link. Missing permission? You see exactly which one and where to grant it. This means less debugging and more doing.
 
 ## Quick Start
-
-```bash
-git clone https://github.com/oliverames/meta-mcp-server.git
-cd meta-mcp-server
-npm install && npm run build
-```
 
 Add to your MCP client config:
 
@@ -55,8 +49,8 @@ Add to your MCP client config:
 {
   "mcpServers": {
     "meta": {
-      "command": "node",
-      "args": ["/path/to/meta-mcp-server/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@oliverames/meta-mcp-server"],
       "env": {
         "META_ACCESS_TOKEN": "your_token_here"
       }
@@ -69,11 +63,15 @@ That's it. Your AI assistant now has access to 200 Meta tools.
 
 > Need a token? Go to the [Graph API Explorer](https://developers.facebook.com/tools/explorer), select your app, and generate one. See [Configuration](#configuration) for details.
 
-<br>
+### From Source
+
+```bash
+git clone https://github.com/oliverames/meta-mcp-server.git
+cd meta-mcp-server
+npm install && npm run build
+```
 
 ---
-
-<br>
 
 ## What You Can Do
 
@@ -230,11 +228,7 @@ Debug tokens, check permissions, monitor rate limits, verify pixel health, and m
 </tr>
 </table>
 
-<br>
-
 ---
-
-<br>
 
 ## Complete Tool Reference
 
@@ -297,7 +291,7 @@ Everything a brand needs to manage their Facebook presence, messaging, and live 
 | `meta_set_away_message` | Set the away/out-of-office message |
 | `meta_set_greeting` | Set the Messenger greeting text |
 
-### Instagram — 35 tools
+### Instagram — 37 tools
 
 Full Instagram Business API — publishing with scheduling, DMs, broadcast channels, engagement, discovery, and analytics.
 
@@ -319,6 +313,7 @@ Full Instagram Business API — publishing with scheduling, DMs, broadcast chann
 | `meta_reply_instagram_comment` | Reply to a comment |
 | `meta_delete_instagram_comment` | Delete a comment |
 | `meta_hide_instagram_comment` | Hide/unhide a comment (non-destructive moderation) |
+| `meta_search_instagram_catalog_products` | Search for products in an Instagram Shopping catalog by name |
 | `meta_search_instagram_hashtag` | Search hashtag top or recent media |
 | `meta_get_instagram_recent_hashtags` | Get your recently searched hashtags |
 | `meta_get_instagram_user` | Business discovery — look up any public business/creator by username |
@@ -334,12 +329,13 @@ Full Instagram Business API — publishing with scheduling, DMs, broadcast chann
 | `meta_get_instagram_messages` | Get messages in a DM conversation |
 | `meta_send_instagram_message` | Send a text DM |
 | `meta_send_instagram_media_message` | Send an image or link via DM |
+| `meta_get_instagram_available_catalogs` | List product catalogs available for Instagram Shopping on a professional account |
 | `meta_get_instagram_broadcast_channels` | List broadcast channels |
 | `meta_get_broadcast_channel_messages` | Get messages in a broadcast channel |
 | `meta_send_broadcast_channel_message` | Send a message to a broadcast channel |
 | `meta_create_broadcast_channel_poll` | Create a poll in a broadcast channel |
 
-### Ads Manager — 56 tools
+### Ads Manager — 62 tools
 
 Complete ad campaign lifecycle — create, optimize, test, analyze, and automate. Includes Advantage+ migration, A/B testing, and comprehensive pixel management.
 
@@ -367,6 +363,7 @@ Complete ad campaign lifecycle — create, optimize, test, analyze, and automate
 | `meta_get_ad_creative` | Get a single creative's details |
 | `meta_create_ad_creative` | Create an ad creative with text, image, and link |
 | `meta_get_ad_preview` | Preview how an ad will appear in different placements |
+| `meta_get_ad_rule` | Get details for a specific automated ad rule |
 | `meta_get_ad_account_users` | List users with access to the ad account |
 | `meta_upload_ad_image` | Upload an image for use in ad creatives |
 | `meta_list_ad_images` | List previously uploaded ad images |
@@ -378,6 +375,10 @@ Complete ad campaign lifecycle — create, optimize, test, analyze, and automate
 | `meta_browse_targeting_categories` | Browse all available targeting categories |
 | `meta_get_reach_estimate` | Estimate potential audience size for a targeting spec |
 | `meta_get_delivery_estimate` | Estimate ad delivery for a given budget and targeting |
+| `meta_get_leadgen_leads` | Get submitted leads from a lead generation form |
+| `meta_get_minimum_budgets` | Get minimum daily and lifetime budgets for an ad account by currency and bid strategy |
+| `meta_list_leadgen_forms` | List lead generation forms for a Facebook Page |
+| `meta_list_offline_event_sets` | List offline conversion event sets for an ad account |
 | `meta_list_pixels` | List Meta Pixels for conversion tracking |
 | `meta_create_pixel` | Create a new pixel |
 | `meta_get_pixel` | Get pixel details (name, cookie status, matching fields) |
@@ -401,8 +402,9 @@ Complete ad campaign lifecycle — create, optimize, test, analyze, and automate
 | `meta_create_ad_study` | Create an A/B test to compare campaigns or ad sets |
 | `meta_get_ad_studies` | List A/B tests for an ad account |
 | `meta_get_ad_study_results` | Get A/B test results with winner and confidence level |
+| `meta_send_offline_event` | Send an offline conversion event for in-store purchases, phone orders, or other offline conversions |
 
-### Threads — 20 tools
+### Threads — 22 tools
 
 Full Threads API — publishing with GIFs, reply controls, location tagging, and analytics.
 
@@ -421,6 +423,8 @@ Full Threads API — publishing with GIFs, reply controls, location tagging, and
 | `threads_delete_post` | Delete a post |
 | `threads_get_replies` | Get replies to a post |
 | `threads_get_conversation` | Get the full conversation tree for a post |
+| `threads_get_followers` | List followers of the authenticated Threads user |
+| `threads_get_following` | List accounts the authenticated Threads user is following |
 | `threads_get_mentions` | Get posts that @mention you |
 | `threads_get_media_children` | Get individual items in a carousel post |
 | `threads_hide_reply` | Hide or unhide a reply |
@@ -429,7 +433,7 @@ Full Threads API — publishing with GIFs, reply controls, location tagging, and
 | `threads_get_user_insights` | Get account-level metrics with demographic breakdowns |
 | `threads_check_rate_limits` | Check your current publishing rate limit status |
 
-### Commerce — 8 tools
+### Commerce — 10 tools
 
 Product catalog management for Facebook and Instagram shops.
 
@@ -440,8 +444,10 @@ Product catalog management for Facebook and Instagram shops.
 | `meta_list_products` | List products in a catalog with filtering |
 | `meta_get_product` | Get a single product's full details |
 | `meta_create_product` | Add a product to a catalog |
+| `meta_create_product_feed` | Create a product feed to automatically sync products from a URL |
 | `meta_update_product` | Update product details (name, price, availability, etc.) |
 | `meta_delete_product` | Delete a product from a catalog |
+| `meta_list_product_feeds` | List product feeds for a catalog |
 | `meta_list_product_sets` | List product sets (subgroups) in a catalog |
 
 ### Conversions API — 2 tools
@@ -485,19 +491,16 @@ Generate visual charts from data for reports and presentations.
 | `meta_generate_chart` | Create bar, line, pie, doughnut, radar charts as PNG images |
 | `meta_generate_comparison_chart` | Generate side-by-side comparison charts (A/B, period-over-period) |
 
-### Ad Library & Utility — 3 tools
+### Ad Library & Utility — 4 tools
 
 | Tool | Description |
 |:---|:---|
 | `meta_search_ad_library` | Search any advertiser's active ads — public transparency API |
 | `meta_debug_token` | Inspect your token: type, validity, expiry, permissions, associated app and user |
 | `meta_health_check` | Check server health: token status, cached tokens, API connectivity |
-
-<br>
+| `meta_search_places` | Search Facebook Places (locations) by name or coordinates for post tagging |
 
 ---
-
-<br>
 
 ## Configuration
 
@@ -566,11 +569,7 @@ fb_exchange_token=SHORT_LIVED_TOKEN"
 
 Works with any MCP client that supports **stdio transport**. `THREADS_ACCESS_TOKEN` is optional — only needed for Threads tools.
 
-<br>
-
 ---
-
-<br>
 
 ## How It Works
 
@@ -604,11 +603,7 @@ fb_exchange_token=CURRENT_TOKEN"
 
 > For permanent tokens, create a System User in Business Manager → System Users.
 
-<br>
-
 ---
-
-<br>
 
 ## Architecture
 
@@ -622,16 +617,16 @@ src/
 │   └── utils.ts          Error handling, formatting, shared schemas
 └── tools/
     ├── pages.ts          52 Facebook Page tools
-    ├── instagram.ts      35 Instagram tools
-    ├── ads.ts            56 Ads Manager tools
-    ├── threads.ts        20 Threads tools
-    ├── commerce.ts        8 Commerce/Catalog tools
+    ├── instagram.ts      37 Instagram tools
+    ├── ads.ts            62 Ads Manager tools
+    ├── threads.ts        22 Threads tools
+    ├── commerce.ts       10 Commerce/Catalog tools
     ├── conversions.ts     2 Conversions API tools
     ├── audiences.ts       5 Audience tools
     ├── insights.ts        4 Insight tools
     ├── charts.ts          2 Chart generation tools
     ├── ad_library.ts      1 Ad Library tool
-    └── utility.ts         2 Utility tools
+    └── utility.ts         3 Utility tools
 ```
 
 ### Key Design Decisions
@@ -645,11 +640,7 @@ src/
 - **Graceful auth** — Server starts without tokens, returns setup instructions on first tool call instead of crashing
 - **Chart generation** — QuickChart integration for rendering data as PNG images for reports
 
-<br>
-
 ---
-
-<br>
 
 ## API Coverage
 
@@ -666,11 +657,7 @@ Targets **Meta Graph API v21.0** and **Threads API v1.0**.
 | Ad Library API | **Supported** — public transparency search |
 | WhatsApp Business API | Not covered — separate infrastructure and token flow |
 
-<br>
-
 ---
-
-<br>
 
 ## Contributing
 
@@ -684,11 +671,7 @@ npm run test:watch  # Development mode
 
 Conventions: Zod `.strict()` schemas, `response_format` parameter on read tools, `errorResult()` for error returns with `isError: true`.
 
-<br>
-
 ---
-
-<br>
 
 <p align="center">
   <sub>Not affiliated with or endorsed by Meta Platforms, Inc.</sub>
