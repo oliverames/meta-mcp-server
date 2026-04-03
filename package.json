@@ -15,6 +15,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "prepublishOnly": "npm run build",
+    "postpublish": "$HOME/Developer/projects/ames-claude/bump-and-sync",
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist"
