@@ -524,6 +524,17 @@ fb_exchange_token=SHORT_LIVED_TOKEN"
 
 **Threads** uses a separate token via `graph.threads.net` OAuth — see [Threads API docs](https://developers.facebook.com/docs/threads/get-started).
 
+### 1Password Integration
+
+If `META_ACCESS_TOKEN` or `THREADS_ACCESS_TOKEN` are not set in the environment, the server automatically attempts to resolve them from [1Password CLI](https://developer.1password.com/docs/cli/):
+
+```
+op://Development/Meta Access Token/credential
+op://Development/Threads Access Token/credential
+```
+
+This means you can skip setting env vars entirely if you have `op` installed and a service account or session active. The fallback adds ~1-2s to startup per token and is silently skipped if 1Password is unavailable.
+
 ### 3. Grant Permissions
 
 | Permission | Required for |
