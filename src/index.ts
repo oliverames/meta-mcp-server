@@ -14,6 +14,10 @@ import { registerConversionTools } from "./tools/conversions.js";
 import { registerUtilityTools } from "./tools/utility.js";
 import { registerChartTools } from "./tools/charts.js";
 import { registerCommerceTools } from "./tools/commerce.js";
+import { resolveApiKey } from "./op-fallback.js";
+
+resolveApiKey("META_ACCESS_TOKEN", "op://Development/Meta Access Token/credential");
+resolveApiKey("THREADS_ACCESS_TOKEN", "op://Development/Threads Access Token/credential");
 
 const token = process.env.META_ACCESS_TOKEN ?? "";
 const threadsToken = process.env.THREADS_ACCESS_TOKEN;
