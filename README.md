@@ -5,7 +5,7 @@
 <h1 align="center">Meta MCP Server</h1>
 
 <p align="center">
-  Connect any AI assistant to Meta's entire business platform.<br>
+  <strong>Connect any AI assistant to Meta's entire business platform</strong><br>
   <sub>Facebook Pages &middot; Instagram &middot; Threads &middot; Ads Manager &middot; Commerce &middot; Conversions API &middot; Insights</sub>
 </p>
 
@@ -510,6 +510,11 @@ Generate visual charts from data for reports and presentations.
 
 ## Configuration
 
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `META_ACCESS_TOKEN` | Yes | None | Long-lived Meta Graph API token for Facebook Pages, Instagram, Ads Manager, Commerce, Conversions API, Audiences, Insights, and utility tools. |
+| `THREADS_ACCESS_TOKEN` | No | None | Threads API token. Required only for Threads publishing, replies, and insights tools. |
+
 ### 1. Create a Meta App
 
 Go to [developers.facebook.com](https://developers.facebook.com) → **My Apps** → **Create App** → choose **Business** type. Add **Facebook Login**, **Pages API**, **Instagram Graph API**, and **Marketing API**.
@@ -676,17 +681,18 @@ Targets **Meta Graph API v21.0** and **Threads API v1.0**.
 
 ---
 
-## Contributing
+## Development
 
-Contributions welcome. Run the test suite and follow existing patterns:
+Use the same commands for local development and contribution checks:
 
 ```bash
+npm install
 npm test            # 52 tests
 npm run build       # TypeScript compilation
 npm run test:watch  # Development mode
 ```
 
-Conventions: Zod `.strict()` schemas, `response_format` parameter on read tools, `errorResult()` for error returns with `isError: true`.
+Development conventions: Zod `.strict()` schemas, `response_format` parameter on read tools, and `errorResult()` for tool errors with `isError: true`.
 
 ---
 
