@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png">
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/800px-Meta_Platforms_Inc._logo.svg.png" alt="Meta" width="100">
-  </picture>
+  <img src="assets/icon.png" width="80" height="80" alt="Meta">
 </p>
 
 <h1 align="center">Meta MCP Server</h1>
@@ -21,12 +17,14 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@oliverames/meta-mcp-server"><img src="https://img.shields.io/npm/v/@oliverames/meta-mcp-server?style=flat-square&color=f5a542" alt="npm"></a>
+  <a href="https://github.com/oliverames/meta-mcp-server/releases/tag/v2.0.2"><img src="https://img.shields.io/github/v/release/oliverames/meta-mcp-server?style=flat-square&color=f5a542&label=MCPB" alt="MCPB release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f5a542?style=flat-square" alt="License"></a>
   <a href="https://www.buymeacoffee.com/oliverames"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-f5a542?style=flat-square&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#install-with-mcpb">MCPB Download</a> &bull;
   <a href="#what-you-can-do">What You Can Do</a> &bull;
   <a href="#complete-tool-reference">All 200 Tools</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
@@ -42,6 +40,14 @@ Social media management across Meta's platforms — Facebook Pages, Instagram, T
 Every tool returns actionable error messages — not cryptic API codes. Token expired? You get a regeneration link. Missing permission? You see exactly which one and where to grant it. This means less debugging and more doing.
 
 ## Quick Start
+
+### Install with MCPB
+
+For Claude Desktop and other MCPB-compatible clients, download the local bundle from the [v2.0.2 release](https://github.com/oliverames/meta-mcp-server/releases/tag/v2.0.2):
+
+[Download `meta-mcp-server-2.0.2.mcpb`](https://github.com/oliverames/meta-mcp-server/releases/download/v2.0.2/meta-mcp-server-2.0.2.mcpb)
+
+The bundle includes the Meta favicon, production runtime dependencies, and setup prompts for Meta and optional Threads access tokens.
 
 Add to your MCP client config:
 
