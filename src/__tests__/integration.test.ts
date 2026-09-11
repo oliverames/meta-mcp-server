@@ -84,7 +84,7 @@ describe("MCP Server Integration", () => {
     expect((response as any).result.capabilities.tools).toBeDefined();
   });
 
-  it("lists all 200 tools via tools/list", async () => {
+  it("lists all 201 tools via tools/list", async () => {
     const response = await sendMcpRequest({
       jsonrpc: "2.0",
       id: 1,
@@ -95,7 +95,7 @@ describe("MCP Server Integration", () => {
     const tools = (response as any).result?.tools;
     expect(tools).toBeDefined();
     expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBe(200);
+    expect(tools.length).toBe(201);
 
     // Verify key tools exist
     const names = tools.map((t: any) => t.name);
@@ -109,6 +109,7 @@ describe("MCP Server Integration", () => {
     expect(names).toContain("meta_create_live_video");
     expect(names).toContain("meta_get_live_videos");
     expect(names).toContain("meta_end_live_video");
+    expect(names).toContain("meta_create_post_comment");
   });
 
   it("returns helpful error when calling tool without token", async () => {

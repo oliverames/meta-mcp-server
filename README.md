@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <code>200 tools</code> &bull;
+  <code>201 tools</code> &bull;
   <code>7 platforms</code> &bull;
   <code>Graph API v21.0</code>
 </p>
@@ -26,7 +26,7 @@
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#install-with-mcpb">MCPB Download</a> &bull;
   <a href="#what-you-can-do">What You Can Do</a> &bull;
-  <a href="#complete-tool-reference">All 200 Tools</a> &bull;
+  <a href="#complete-tool-reference">All 201 Tools</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#architecture">Architecture</a>
 </p>
@@ -65,7 +65,7 @@ Add to your MCP client config:
 }
 ```
 
-That's it. Your AI assistant now has access to 200 Meta tools.
+That's it. Your AI assistant now has access to 201 Meta tools.
 
 > Need a token? Go to the [Graph API Explorer](https://developers.facebook.com/tools/explorer), select your app, and generate one. See [Configuration](#configuration) for details.
 
@@ -238,7 +238,7 @@ Debug tokens, check permissions, monitor rate limits, verify pixel health, and m
 
 ## Complete Tool Reference
 
-### Facebook Pages — 52 tools
+### Facebook Pages — 53 tools
 
 Everything a brand needs to manage their Facebook presence, messaging, and live broadcasts.
 
@@ -258,6 +258,7 @@ Everything a brand needs to manage their Facebook presence, messaging, and live 
 | `meta_get_promotable_posts` | Get posts eligible for ad promotion |
 | `meta_get_visitor_posts` | Get posts made by visitors on the page |
 | `meta_get_post_comments` | Get comments on a post with pagination |
+| `meta_create_post_comment` | Create a new top-level comment on a post |
 | `meta_reply_post_comment` | Reply to a comment as the page |
 | `meta_delete_comment` | Delete a comment |
 | `meta_hide_comment` | Hide or unhide a comment (non-destructive moderation) |
@@ -638,7 +639,7 @@ src/
 │   ├── api.ts            MetaApiClient — dual Graph + Threads API
 │   └── utils.ts          Error handling, formatting, shared schemas
 └── tools/
-    ├── pages.ts          52 Facebook Page tools
+    ├── pages.ts          53 Facebook Page tools
     ├── instagram.ts      37 Instagram tools
     ├── ads.ts            62 Ads Manager tools
     ├── threads.ts        22 Threads tools
