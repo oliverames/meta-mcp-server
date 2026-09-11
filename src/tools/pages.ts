@@ -973,6 +973,57 @@ Args:
     }
   );
 
+  // ─── Create Top-Level Post Comment ──────────────────────────────────────
+  server.registerTool(
+    "meta_create_post_comment",
+    {
+      title: "Create Top-Level Post Comment",
+      description: `Posts a new top-level comment on a Facebook Page post.
+
+Requires: meta_list_pages must be called first to load page tokens, plus the
+pages_manage_engagement permission for the Page access token.
+
+Args:
+  - post_id (string): Post ID (format: {page_id}_{post_id})
+  - page_id (string): Page ID (for token lookup)
+  - message (string): Comment text`,
+      inputSchema: z
+        .object({
+          post_id: z.string().describe("Facebook Page post ID"),
+          page_id: z.string().describe("Page ID (call meta_list_pages first)"),
+          message: z.string().min(1).describe("Top-level comment text"),
+          response_format: ResponseFormatSchema,
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ post_id, page_id, message, response_format }) => {
+      try {
+        const pageToken = client.requirePageToken(page_id);
+        const result = await client.post<{ id: string }>(
+          `/${post_id}/comments`,
+          { message },
+          pageToken
+        );
+
+        if (response_format === "json") {
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+
+        return {
+          content: [{ type: "text", text: `Comment posted successfully.\n\n- **Comment ID**: \`${result.id}\`` }],
+        };
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
   // ─── Reply to Post Comment ─────────────────────────────────────────────
   server.registerTool(
     "meta_reply_post_comment",
