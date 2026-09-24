@@ -5,6 +5,7 @@ export class MetaApiClient {
   private readonly userToken: string;
   private readonly threadsToken: string | undefined;
   private readonly pageTokenCache = new Map<string, string>();
+  private readonly pageTokenRefreshes = new Map<string, Promise<string>>();
 
   constructor(userToken: string, threadsToken?: string) {
     this.userToken = userToken;
@@ -35,11 +36,54 @@ export class MetaApiClient {
     token: string,
     params: Record<string, unknown> = {}
   ): Promise<T> {
-    const response = await axios.get(`${GRAPH_API_BASE}${path}`, {
-      params: { access_token: token, ...params },
+    const request = (accessToken: string) => axios.get(`${GRAPH_API_BASE}${path}`, {
+      params: { ...params, access_token: accessToken },
       timeout: 30000,
     });
-    return response.data as T;
+    try {
+      return (await request(token)).data as T;
+    } catch (error) {
+      const detail = (error as AxiosError<{ error?: { code?: number; error_subcode?: number } }>)?.response?.data?.error;
+      const pages = [...this.pageTokenCache.entries()].filter(([, cached]) => cached === token);
+      if (detail?.code !== 190 || detail.error_subcode !== 2069032 || pages.length !== 1) throw error;
+      const pageId = pages[0][0];
+      let refresh = this.pageTokenRefreshes.get(pageId);
+      if (!refresh) {
+        refresh = this.refreshPageToken(pageId, token);
+        this.pageTokenRefreshes.set(pageId, refresh);
+      }
+      let freshToken: string;
+      try {
+        freshToken = await refresh;
+      } finally {
+        if (this.pageTokenRefreshes.get(pageId) === refresh) this.pageTokenRefreshes.delete(pageId);
+      }
+      // Call the raw request once, not getWithToken, so a second error cannot recurse.
+      return (await request(freshToken)).data as T;
+    }
+  }
+
+  private async refreshPageToken(pageId: string, staleToken: string): Promise<string> {
+    let after: string | undefined;
+    const seen = new Set<string>();
+    for (let page = 0; page < 10; page++) {
+      const result = await this.get<{ data: Array<{ id: string; access_token?: string }>; paging?: { next?: string; cursors?: { after?: string } } }>(
+        "/me/accounts", { fields: "id,access_token", limit: 100, ...(after ? { after } : {}) }
+      );
+      const match = result.data.find((entry) => entry.id === pageId);
+      if (match?.access_token) {
+        // Preserve a newer token installed by another request while this read was pending.
+        const current = this.pageTokenCache.get(pageId);
+        const fresh = current && current !== staleToken ? current : match.access_token;
+        this.pageTokenCache.set(pageId, fresh);
+        return fresh;
+      }
+      const cursor = result.paging?.cursors?.after;
+      if (!result.paging?.next || !cursor || seen.has(cursor)) break;
+      seen.add(cursor);
+      after = cursor;
+    }
+    throw new Error(`Could not refresh access for Page ${pageId}. Call meta_list_pages to verify the current Page grant.`);
   }
 
   async post<T>(

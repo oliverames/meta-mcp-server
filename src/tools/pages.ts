@@ -1346,11 +1346,7 @@ Args:
     "meta_get_page_fan_demographics",
     {
       title: "Get Page Fan Demographics",
-      description: `Gets fan/follower demographic breakdowns for a Facebook Page via insights.
-
-Args:
-  - page_id (string): Facebook Page ID
-  - metric (string): Demographic metric — 'page_fans_city', 'page_fans_country', 'page_fans_gender_age', 'page_fans_locale'`,
+      description: `Reports retirement of legacy Page fan demographic metrics. Meta retired all four accepted selectors. City/country alternatives are page_follows_city/page_follows_country; age/gender and locale have no documented replacement. No Graph API request is sent. Consult current Page Insights documentation for supported replacement metrics and periods.`,
       inputSchema: z
         .object({
           page_id: z.string(),
@@ -1367,38 +1363,10 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ page_id, metric, response_format }) => {
-      try {
-        const pageToken = client.requirePageToken(page_id);
-        const data = await client.getWithToken<{ data: Array<{
-          name: string;
-          values: Array<{ value: Record<string, number> }>;
-        }> }>(`/${page_id}/insights`, pageToken, {
-          metric,
-          period: "lifetime",
-        });
-
-        if (response_format === "json") {
-          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-        }
-
-        const item = data.data?.[0];
-        if (!item?.values?.length) {
-          return { content: [{ type: "text", text: "No demographic data available." }] };
-        }
-
-        const breakdown = item.values[item.values.length - 1].value;
-        const sorted = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-        const lines = [`# ${metric.replace(/_/g, " ").replace(/\bpage\b/i, "Page")}`, ""];
-        for (const [key, val] of sorted.slice(0, 30)) {
-          lines.push(`- **${key}**: ${formatNumber(val)}`);
-        }
-        if (sorted.length > 30) lines.push(`\n_...and ${sorted.length - 30} more_`);
-        return { content: [{ type: "text", text: lines.join("\n") }] };
-      } catch (error) {
-        return errorResult(error);
-      }
-    }
+    async ({ metric }) => ({
+      content: [{ type: "text", text: `The ${metric} metric is retired. See https://developers.facebook.com/documentation/pages-api/platforminsights/page/deprecated-metrics/ for replacements. No request was sent; verify a replacement's period before using meta_get_page_insights.` }],
+      isError: true,
+    })
   );
 
   // ─── Get Post Reactions ────────────────────────────────────────────────
@@ -2237,7 +2205,7 @@ Call without subscribed_fields to check current subscriptions.`,
     "meta_get_promotable_posts",
     {
       title: "Get Promotable Posts",
-      description: `Gets posts that are eligible for boosting/promotion on a Facebook Page.
+      description: `Reads one Page feed page and returns posts explicitly eligible for promotion. Unknown eligibility is excluded. Limit applies before filtering; use the returned cursor to continue.
 
 Args:
   - page_id (string): Facebook Page ID
@@ -2259,24 +2227,25 @@ Args:
         if (after) params.after = after;
 
         const data = await client.getWithToken<MetaPaginatedResponse<MetaPost & { is_eligible_for_promotion?: boolean }>>(
-          `/${page_id}/promotable_posts`,
+          `/${page_id}/feed`,
           pageToken,
           params
         );
 
-        if (!data.data?.length) {
-          return { content: [{ type: "text", text: "No promotable posts found." }] };
-        }
-
+        const eligible = { ...data, data: (data.data ?? []).filter((post) => post.is_eligible_for_promotion === true) };
         if (response_format === "json") {
-          return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+          return { content: [{ type: "text", text: JSON.stringify(eligible, null, 2) }] };
+        }
+        const next = data.paging?.next ? data.paging.cursors?.after : undefined;
+        if (!eligible.data.length) {
+          return { content: [{ type: "text", text: "No explicitly eligible posts on this feed page." + buildPaginationNote(0, next) }] };
         }
 
-        const lines = [`# Promotable Posts (${data.data.length})`, ""];
-        for (const post of data.data) {
+        const lines = [`# Promotable Posts (${eligible.data.length})`, ""];
+        for (const post of eligible.data) {
           lines.push(`- \`${post.id}\` — ${formatDate(post.created_time)}${post.message ? ` | ${truncateField(post.message, 80)}` : ""}`);
         }
-        return { content: [{ type: "text", text: truncate(lines.join("\n"), "promotable posts") }] };
+        return { content: [{ type: "text", text: truncate(lines.join("\n") + buildPaginationNote(eligible.data.length, next), "promotable posts") }] };
       } catch (error) {
         return errorResult(error);
       }
@@ -2704,14 +2673,14 @@ Ends the broadcast immediately.`,
     "meta_get_page_automated_responses",
     {
       title: "Get Page Automated Messaging Settings",
-      description: `Gets the current automated messaging settings for a Facebook Page.
+      description: `Gets the Facebook Page Messenger profile greeting and ice breakers.
 
 Requires: meta_list_pages called first to load page tokens.
 
 Args:
   - page_id (string): Facebook Page ID
 
-Returns: Instant reply message, away message, greeting text, and ice breakers configuration.`,
+Returns: Messenger profile greeting and ice breakers. Instant and away replies are not exposed by this endpoint.`,
       inputSchema: z
         .object({
           page_id: z.string().describe("Facebook Page ID"),
@@ -2728,8 +2697,8 @@ Returns: Instant reply message, away message, greeting text, and ice breakers co
     async ({ page_id, response_format }) => {
       try {
         const pageToken = client.requirePageToken(page_id);
-        const data = await client.getWithToken<Record<string, unknown>>(`/${page_id}`, pageToken, {
-          fields: "instant_reply_message,greeting,ice_breakers",
+        const data = await client.getWithToken<{ data: Array<Record<string, unknown>> }>(`/${page_id}/messenger_profile`, pageToken, {
+          fields: "greeting,ice_breakers",
         });
 
         if (response_format === "json") {
@@ -2741,26 +2710,18 @@ Returns: Instant reply message, away message, greeting text, and ice breakers co
           "",
         ];
 
-        if (data.instant_reply_message) {
-          lines.push(`## Instant Reply`);
-          lines.push(`- **Message**: ${data.instant_reply_message}`);
-          lines.push("");
-        }
-
-        if (data.greeting && Array.isArray(data.greeting)) {
-          lines.push(`## Greeting`);
-          for (const g of data.greeting as Array<{ locale: string; text: string }>) {
-            lines.push(`- **${g.locale}**: ${g.text}`);
+        for (const profile of data.data ?? []) {
+          if (Array.isArray(profile.greeting)) {
+            lines.push("## Greeting");
+            for (const greeting of profile.greeting as Array<{ locale: string; text: string }>) {
+              lines.push(`- **${greeting.locale}**: ${greeting.text}`);
+            }
+            lines.push("");
           }
-          lines.push("");
-        }
-
-        if (data.ice_breakers && Array.isArray(data.ice_breakers)) {
-          lines.push(`## Ice Breakers`);
-          for (const ib of data.ice_breakers as Array<{ question: string; payload?: string }>) {
-            lines.push(`- ${ib.question}`);
+          if (Array.isArray(profile.ice_breakers)) {
+            // Preserve locale/call_to_actions structure rather than assuming flat questions.
+            lines.push("## Ice Breakers", "```json", JSON.stringify(profile.ice_breakers, null, 2), "```", "");
           }
-          lines.push("");
         }
 
         if (lines.length === 2) {

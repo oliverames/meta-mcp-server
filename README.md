@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <code>200 tools</code> &bull;
+  <code>199 tools</code> &bull;
   <code>7 platforms</code> &bull;
   <code>Graph API v21.0</code>
 </p>
@@ -26,7 +26,7 @@
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#install-with-mcpb">MCPB Download</a> &bull;
   <a href="#what-you-can-do">What You Can Do</a> &bull;
-  <a href="#complete-tool-reference">All 200 Tools</a> &bull;
+  <a href="#complete-tool-reference">All 199 Tools</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
   <a href="#architecture">Architecture</a>
 </p>
@@ -65,7 +65,7 @@ Add to your MCP client config:
 }
 ```
 
-That's it. Your AI assistant now has access to 200 Meta tools.
+That's it. Your AI assistant now has access to 199 Meta tools.
 
 > Need a token? Go to the [Graph API Explorer](https://developers.facebook.com/tools/explorer), select your app, and generate one. See [Configuration](#configuration) for details.
 
@@ -504,7 +504,6 @@ Generate visual charts from data for reports and presentations.
 | `meta_search_ad_library` | Search any advertiser's active ads — public transparency API |
 | `meta_debug_token` | Inspect your token: type, validity, expiry, permissions, associated app and user |
 | `meta_health_check` | Check server health: token status, cached tokens, API connectivity |
-| `meta_search_places` | Search Facebook Places (locations) by name or coordinates for post tagging |
 
 ---
 
@@ -716,3 +715,9 @@ Development conventions: Zod `.strict()` schemas, `response_format` parameter on
     &bull; <a href="https://bsky.app/profile/oliverames.bsky.social">Bluesky</a>
   </sub>
 </p>
+
+### Graph API compatibility notes
+
+Legacy `meta_search_places` was removed because Meta retired Places Search. `meta_search_targeting_geolocations` finds advertising targeting locations, not replacement place IDs for tagging posts. The legacy fan-demographics tool now reports retired selectors without calling Graph API. Check current Page Insights documentation before choosing replacement metrics and periods.
+
+Page reads retry once after error 190/subcode 2069032 when the failed token maps to exactly one cached Page. The client obtains a fresh token from the documented accounts list using the configured user token. It never refreshes or replays writes. Permission and refresh failures remain errors.

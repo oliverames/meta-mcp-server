@@ -945,7 +945,7 @@ Note: Limited to 30 unique hashtag searches per 7 days per IG account.`,
         // Step 2: Get media
         const data = await client.get<MetaPaginatedResponse<InstagramMedia>>(
           `/${hashtagId}/${edge}`,
-          { user_id: ig_account_id, fields: IG_MEDIA_FIELDS, limit }
+          { user_id: ig_account_id, fields: "id,media_type,media_url,permalink,caption,like_count,comments_count,timestamp", limit }
         );
 
         if (!data.data?.length) {
@@ -1287,7 +1287,7 @@ Args:
       try {
         const data = await client.get<{ data: InstagramMedia[] }>(
           `/${media_id}/children`,
-          { fields: IG_MEDIA_FIELDS }
+          { fields: "id,media_type,media_url,thumbnail_url,timestamp" }
         );
 
         if (!data.data?.length) {
