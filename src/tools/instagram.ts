@@ -619,6 +619,7 @@ Args:
       Demographics: engaged_audience_demographics, reached_audience_demographics, follower_demographics, online_followers
 
 Note: account_repost_count (Dec 2025) returns the total number of reposts across the account for the given period.
+  - metric_type (string): 'total_value' (default, required by interaction metrics) or 'time_series' (for supporting metrics such as reach).
   - period (string): 'day', 'week', 'days_28', 'month', 'lifetime' (lifetime only for demographic metrics)
   - since (string, optional): Start date YYYY-MM-DD
   - until (string, optional): End date YYYY-MM-DD
@@ -634,6 +635,7 @@ Note: demographic metrics require 100+ followers. online_followers only availabl
             .default(["reach", "accounts_engaged", "total_interactions", "likes", "comments", "shares", "saves", "profile_links_taps", "account_repost_count"])
             .describe("Metric names (see description for full list)"),
           period: z.enum(["day", "week", "days_28", "month", "lifetime"]).default("day"),
+          metric_type: z.enum(["time_series", "total_value"]).default("total_value").describe("Aggregation type supported by the requested metrics"),
           since: z.string().optional(),
           until: z.string().optional(),
           breakdown: z.enum(["age", "city", "country", "gender"]).optional().describe("For demographic metrics only"),
@@ -648,11 +650,12 @@ Note: demographic metrics require 100+ followers. online_followers only availabl
         openWorldHint: false,
       },
     },
-    async ({ ig_account_id, metrics, period, since, until, breakdown, timeframe, response_format }) => {
+    async ({ ig_account_id, metrics, period, metric_type, since, until, breakdown, timeframe, response_format }) => {
       try {
         const params: Record<string, unknown> = {
           metric: metrics.join(","),
           period,
+          metric_type,
         };
         if (since) params.since = since;
         if (until) params.until = until;
@@ -670,9 +673,27 @@ Note: demographic metrics require 100+ followers. online_followers only availabl
           name: string;
           title: string;
           period: string;
-          values: Array<{ value: number; end_time: string }>;
+          values?: Array<{ value: number; end_time: string }>;
+          total_value?: {
+            value?: number;
+            breakdowns?: Array<{
+              dimension_keys: string[];
+              results: Array<{ dimension_values: string[]; value: number }>;
+            }>;
+          };
         }>) {
           lines.push(`## ${item.title ?? item.name}`);
+          if (item.total_value) {
+            if (item.total_value.value !== undefined) {
+              lines.push(`- Total: **${formatNumber(item.total_value.value)}**`);
+            }
+            for (const breakdown of item.total_value.breakdowns ?? []) {
+              lines.push(`**${breakdown.dimension_keys.join(" / ")}**`);
+              for (const result of breakdown.results) {
+                lines.push(`- ${result.dimension_values.join(" / ")}: **${formatNumber(result.value)}**`);
+              }
+            }
+          }
           if (item.values?.length) {
             for (const v of item.values.slice(-7)) {
               lines.push(`- ${formatDate(v.end_time)}: **${formatNumber(v.value)}**`);

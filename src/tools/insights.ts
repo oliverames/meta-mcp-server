@@ -146,7 +146,7 @@ Args:
   - breakdowns (string[], optional): Segment by age, gender, country, device_platform, placement, etc.
 
 Returns comprehensive metrics including:
-  Performance: impressions, reach, clicks, spend, frequency, unique_clicks, unique_impressions
+  Performance: impressions, reach, clicks, spend, frequency, unique_clicks
   Cost: cpm, cpc, cpp, ctr, cost_per_action_type, cost_per_conversion, cost_per_inline_link_click, cost_per_outbound_click, cost_per_thruplay
   Engagement: actions, inline_link_clicks, inline_link_click_ctr, inline_post_engagement, outbound_clicks, outbound_clicks_ctr, social_spend
   Conversions: conversions, conversion_values, purchase_roas
