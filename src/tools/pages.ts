@@ -1429,17 +1429,19 @@ Args:
     "meta_update_post",
     {
       title: "Update Facebook Post",
-      description: `Updates an existing Facebook Page post's message text.
+      description: `Updates an existing Facebook Page post's message text and/or pinned state.
 
 Args:
   - post_id (string): Post ID
   - page_id (string): Page ID (for token)
-  - message (string): New message text`,
+  - message (string, optional): New message text
+  - is_pinned (boolean, optional): Pin (true) or unpin (false) the post at the top of the Page`,
       inputSchema: z
         .object({
           post_id: z.string(),
           page_id: z.string(),
-          message: z.string().min(1),
+          message: z.string().min(1).optional(),
+          is_pinned: z.boolean().optional(),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -1450,12 +1452,27 @@ Args:
         openWorldHint: false,
       },
     },
-    async ({ post_id, page_id, message, response_format }) => {
+    async ({ post_id, page_id, message, is_pinned, response_format }) => {
       try {
+        if (message === undefined && is_pinned === undefined) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Nothing to update: provide at least one of `message` or `is_pinned`.",
+              },
+            ],
+          };
+        }
+
         const pageToken = client.requirePageToken(page_id);
+        const params: Record<string, string | boolean> = {};
+        if (message !== undefined) params.message = message;
+        if (is_pinned !== undefined) params.is_pinned = is_pinned;
+
         const result = await client.post<{ success: boolean }>(
           `/${post_id}`,
-          { message },
+          params,
           pageToken
         );
 
