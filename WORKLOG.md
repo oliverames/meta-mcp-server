@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-10-07 - GitHub Issue Review Closeout
+
+**What changed**: Reviewed all 2 open issues against source at `7bab82594f36` and their complete issue history. No issue qualified for closure.
+
+**Decisions made**: Close completed implementations even when device acceptance remains, and close testing-only tasks under Oliver's explicit instruction. Keep unresolved defects, missing implementation, release work, and owner decisions open.
+
+**Left off at**: Resolved this session: issue assignment and state reconciliation. GitHub was independently re-read on October 7, 2026 at 10:20 AM EDT. All 3 repository issues include Oliver as an assignee, with 2 open. Source paths and cited lines were checked. No runtime tests, deployment, or application changes were performed. This is one part of the account-wide review.
+
+**Open questions**: Still open: [#1](https://github.com/oliverames/meta-mcp-server/issues/1), [#4](https://github.com/oliverames/meta-mcp-server/issues/4). Other previously recorded operational follow-ups retain their dated status. No new issue was needed for this review.
+
+---
+
 ## 2026-04-06 — 1Password CLI fallback for credential resolution
 
 **What changed**: Added automatic 1Password CLI fallback to credential resolution at startup. When environment variables are not set, the server attempts to resolve them via `op read` from the Development vault before failing. Uses `execFileSync` (Node) or `exec.Command` (Go) for shell-safe execution with a 10s timeout. Silent no-op if 1Password CLI is unavailable. Updated README to document the integration with `op://` reference paths. Part of a broader session that also touched ynab-mcp-server, imagerelay-mcp-server, meta-mcp-server, sprout-mcp-server, and ames-unifi-mcp.
