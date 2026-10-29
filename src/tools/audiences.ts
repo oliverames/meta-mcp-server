@@ -67,7 +67,7 @@ Returns audience names, types, size estimates, and delivery status.`,
             lines.push(`- **Delivery Status**: ${aud.delivery_status.description} (code ${aud.delivery_status.code})`);
           }
           if (aud.time_created) {
-            lines.push(`- **Created**: ${formatDate(new Date(aud.time_created * 1000).toISOString())}`);
+            lines.push(`- **Created**: ${formatDate(aud.time_created)}`);
           }
           lines.push("");
         }
@@ -127,7 +127,7 @@ Args:
             ? `- **Operation**: ${aud.operation_status.description}`
             : "",
           aud.time_created
-            ? `- **Created**: ${formatDate(new Date(aud.time_created * 1000).toISOString())}`
+            ? `- **Created**: ${formatDate(aud.time_created)}`
             : "",
         ]
           .filter(Boolean)

@@ -1170,7 +1170,7 @@ Args:
         if (after) params.after = after;
 
         const data = await client.getWithToken<MetaPaginatedResponse<MetaPost & {
-          scheduled_publish_time?: string;
+          scheduled_publish_time?: number;
           is_published?: boolean;
         }>>(`/${page_id}/scheduled_posts`, pageToken, params);
 

@@ -101,9 +101,16 @@ export function formatBudget(
   return "N/A";
 }
 
-export function formatDate(isoString?: string): string {
-  if (!isoString) return "N/A";
-  return new Date(isoString).toLocaleDateString("en-US", {
+export function formatDate(input?: string | number): string {
+  if (!input) return "N/A";
+  // Several Meta fields arrive as Unix timestamps rather than ISO strings
+  // (scheduled_publish_time, pixel creation_time/last_fired_time, activity
+  // event_time, audience time_created). Treat bare numbers below 1e12 as
+  // seconds; anything larger is already milliseconds.
+  const epoch =
+    typeof input === "number" ? input : /^\d+$/.test(input) ? Number(input) : NaN;
+  const ms = Number.isNaN(epoch) ? input : epoch < 1e12 ? epoch * 1000 : epoch;
+  return new Date(ms).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
