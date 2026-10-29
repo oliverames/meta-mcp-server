@@ -1,6 +1,6 @@
 {
   "name": "@oliverames/meta-mcp-server",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "The most comprehensive MCP server for Meta Business Suite — 200 tools across Facebook Pages, Instagram, Threads, Ads Manager, Commerce, Conversions API, and more",
   "type": "module",
   "main": "dist/index.js",

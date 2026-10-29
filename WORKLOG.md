@@ -1,3 +1,11 @@
+## 2026-10-29 - Recent-change release review
+
+**What changed**: Reviewed and merged PR #11 (Page story edges) and #12 (Unix-second timestamps), retaining their regression tests. Main `05a0e94` builds and all 112 tests pass with one worker. An earlier loaded parallel run timed out three integration probes; the serial rerun passed unchanged. Registry delivery is owned by the full maintenance publication run.
+
+**Left off at**: Remaining publication checks are recorded in the cross-project review handoff.
+
+---
+
 # Worklog
 
 ## 2026-10-28 - Prepare the security update for npm
