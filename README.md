@@ -91,11 +91,11 @@ npm install && npm run build
 
 ### Publish everywhere
 
-Post to Facebook Pages (text, photo, video, Reels, Stories), Instagram (photos, reels, stories, carousels), and Threads (text, images, video, GIFs, links). Schedule content in advance or cross-post to multiple platforms in one call.
+Post to Facebook Pages (text, photo, video, Reels, Stories), Instagram (photos, reels, stories, carousels), and Threads (text, images, video, GIFs, links). Schedule Facebook Page content in advance or cross-post to multiple platforms in one call.
 
 ```
 > Post our holiday hours to the Facebook page
-> Schedule an Instagram carousel for tomorrow at 9am
+> Schedule tomorrow's Facebook post for 9am
 > Cross-post this photo to both Facebook and Instagram
 > Publish a GIF to Threads with reply controls
 > Create a Facebook Reel from this video
