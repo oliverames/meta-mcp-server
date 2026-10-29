@@ -118,3 +118,53 @@ describe("Facebook Page cover photo contract", () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+describe("Facebook Page story contract", () => {
+  function storyTool() {
+    const registrations: RegisteredTool[] = [];
+    const post = vi.fn();
+    const postUploadUrl = vi.fn().mockResolvedValue({ success: true });
+    const server = {
+      registerTool(name: string, _config: unknown, callback: RegisteredTool["callback"]) {
+        registrations.push({ name, callback });
+      },
+    } as unknown as McpServer;
+    const client = {
+      requirePageToken: vi.fn().mockReturnValue("page-token"),
+      post,
+      postUploadUrl,
+    } as unknown as MetaApiClient;
+    registerPageTools(server, client);
+    return { post, postUploadUrl, callback: registrations.find(({ name }) => name === "meta_publish_page_story")!.callback };
+  }
+
+  it("uploads an unpublished photo before publishing a photo story", async () => {
+    const { post, callback } = storyTool();
+    post.mockResolvedValueOnce({ id: "photo-1" }).mockResolvedValueOnce({ success: true });
+    const result = await callback({ page_id: "123", media_url: "https://example.com/s.jpg", media_type: "photo", response_format: "markdown" });
+    expect(post).toHaveBeenNthCalledWith(1, "/123/photos", { url: "https://example.com/s.jpg", published: false }, "page-token");
+    expect(post).toHaveBeenNthCalledWith(2, "/123/photo_stories", { photo_id: "photo-1" }, "page-token");
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(result.content[0].text).toContain("Story published.");
+  });
+
+  it("runs the three-phase resumable upload for a video story", async () => {
+    const { post, postUploadUrl, callback } = storyTool();
+    post
+      .mockResolvedValueOnce({ video_id: "vid-9", upload_url: "https://rupload.facebook.com/x" })
+      .mockResolvedValueOnce({ success: true, post_id: "story-9" });
+    const result = await callback({ page_id: "123", media_url: "https://example.com/v.mp4", media_type: "video", response_format: "json" });
+    expect(post).toHaveBeenNthCalledWith(1, "/123/video_stories", { upload_phase: "start" }, "page-token");
+    expect(postUploadUrl).toHaveBeenCalledWith("https://rupload.facebook.com/x", "https://example.com/v.mp4", "page-token");
+    expect(post).toHaveBeenNthCalledWith(2, "/123/video_stories", { upload_phase: "finish", video_id: "vid-9" }, "page-token");
+    expect(JSON.parse(result.content[0].text)).toEqual({ success: true, post_id: "story-9" });
+  });
+
+  it("does not hit the stories edge when the media upload fails", async () => {
+    const { post, callback } = storyTool();
+    post.mockRejectedValue(new Error("Upload failed"));
+    const result = await callback({ page_id: "123", media_url: "https://example.com/s.jpg", media_type: "photo", response_format: "json" });
+    expect(result.isError).toBe(true);
+    expect(post).toHaveBeenCalledExactlyOnceWith("/123/photos", { url: "https://example.com/s.jpg", published: false }, "page-token");
+  });
+});

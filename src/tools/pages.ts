@@ -2501,7 +2501,13 @@ Args:
   - media_url (string): Public URL of the image or video
   - media_type (enum): "photo" or "video"
 
-Returns the story ID on success.`,
+Notes:
+  - Photo stories are a two-step flow: the image is uploaded as an unpublished
+    Page photo, then published via the photo_stories edge.
+  - Video stories use the three-phase resumable upload on the video_stories
+    edge (start -> transfer via upload_url -> finish).
+
+Returns the story/post ID on success.`,
       inputSchema: z
         .object({
           page_id: z.string().describe("Facebook Page ID"),
@@ -2520,23 +2526,47 @@ Returns the story ID on success.`,
     async ({ page_id, media_url, media_type, response_format }) => {
       try {
         const pageToken = client.requirePageToken(page_id);
-        const fields: Record<string, unknown> =
-          media_type === "photo" ? { photo_url: media_url } : { video_url: media_url };
+        let mediaId: string;
+        let result: { id?: string; post_id?: string; success?: boolean };
 
-        const result = await client.post<{ id: string }>(
-          `/${page_id}/stories`,
-          fields,
-          pageToken
-        );
+        if (media_type === "photo") {
+          // The photo_stories edge requires an unpublished Page photo first.
+          const upload = await client.post<{ id: string }>(
+            `/${page_id}/photos`,
+            { url: media_url, published: false },
+            pageToken
+          );
+          mediaId = upload.id;
+          result = await client.post(
+            `/${page_id}/photo_stories`,
+            { photo_id: upload.id },
+            pageToken
+          );
+        } else {
+          // Video stories run the resumable-upload protocol on video_stories.
+          const init = await client.post<{ video_id: string; upload_url: string }>(
+            `/${page_id}/video_stories`,
+            { upload_phase: "start" },
+            pageToken
+          );
+          await client.postUploadUrl(init.upload_url, media_url, pageToken);
+          mediaId = init.video_id;
+          result = await client.post(
+            `/${page_id}/video_stories`,
+            { upload_phase: "finish", video_id: init.video_id },
+            pageToken
+          );
+        }
 
         if (response_format === "json") {
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
 
+        const storyId = result.post_id ?? result.id;
         return {
           content: [{
             type: "text",
-            text: `Story published.\n\n- **Story ID**: \`${result.id}\``,
+            text: `Story published.${storyId ? `\n\n- **Story ID**: \`${storyId}\`` : ""}\n- **Media ID**: \`${mediaId}\``,
           }],
         };
       } catch (error) {
