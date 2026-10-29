@@ -169,7 +169,9 @@ Args:
 
 Returns: Media ID of the published post.
 
-Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in future) to schedule the post instead of publishing immediately.
+Scheduling: NOT supported — the Instagram Content Publishing API publishes
+immediately and has no scheduled_publish_time/publish_at parameter. Hold the
+post in your own queue and call this tool when it's time to publish.
 
 Limitations:
   - JPEG only (no PNG, GIF, HEIC)
@@ -182,7 +184,6 @@ Limitations:
           caption: z.string().optional().describe("Post caption"),
           alt_text: z.string().optional().describe("Alt text for accessibility"),
           location_id: z.string().optional().describe("Facebook Place ID"),
-          scheduled_publish_time: z.number().int().optional().describe("Unix timestamp to schedule post (10 min – 75 days in future)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -193,7 +194,7 @@ Limitations:
         openWorldHint: false,
       },
     },
-    async ({ ig_account_id, image_url, caption, alt_text, location_id, scheduled_publish_time, response_format }) => {
+    async ({ ig_account_id, image_url, caption, alt_text, location_id, response_format }) => {
       try {
         // Step 1: Create container
         const containerFields: Record<string, unknown> = { image_url };
@@ -206,29 +207,25 @@ Limitations:
           containerFields
         );
 
-        // Step 2: Publish
-        const publishFields: Record<string, unknown> = { creation_id: container.id };
-        if (scheduled_publish_time) {
-          publishFields.published = false;
-          publishFields.scheduled_publish_time = scheduled_publish_time;
-        }
-        const result = await client.post<{ id: string }>(`/${ig_account_id}/media_publish`, publishFields);
+        // Step 2: Publish (media_publish accepts only creation_id — always immediate)
+        const result = await client.post<{ id: string }>(
+          `/${ig_account_id}/media_publish`,
+          { creation_id: container.id }
+        );
 
         if (response_format === "json") {
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
 
-        const action = scheduled_publish_time ? "scheduled" : "published";
         return {
           content: [
             {
               type: "text",
               text: [
-                `Photo ${action} on Instagram successfully.`,
+                "Photo published on Instagram successfully.",
                 "",
                 `- **Media ID**: \`${result.id}\``,
                 `- **Container ID**: \`${container.id}\``,
-                ...(scheduled_publish_time ? [`- **Scheduled for**: ${new Date(scheduled_publish_time * 1000).toISOString()}`] : []),
               ].join("\n"),
             },
           ],
@@ -258,14 +255,13 @@ Notes:
   - Video must be on a publicly accessible server
   - Check container status before publishing — video processing can take time
   - Use meta_check_instagram_container to check readiness
-  - Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in future) to schedule instead of publishing immediately`,
+  - Scheduling: NOT supported — the Instagram API publishes immediately; hold the post in your own queue and call this tool at the right time`,
       inputSchema: z
         .object({
           ig_account_id: z.string(),
           video_url: z.string().url().describe("Public URL of the video"),
           caption: z.string().optional(),
           share_to_feed: z.boolean().default(true),
-          scheduled_publish_time: z.number().int().optional().describe("Unix timestamp to schedule reel (10 min – 75 days in future)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -276,7 +272,7 @@ Notes:
         openWorldHint: false,
       },
     },
-    async ({ ig_account_id, video_url, caption, share_to_feed, scheduled_publish_time, response_format }) => {
+    async ({ ig_account_id, video_url, caption, share_to_feed, response_format }) => {
       try {
         const containerFields: Record<string, unknown> = {
           media_type: "REELS",
@@ -309,27 +305,23 @@ Notes:
           };
         }
 
-        const publishFields: Record<string, unknown> = { creation_id: container.id };
-        if (scheduled_publish_time) {
-          publishFields.published = false;
-          publishFields.scheduled_publish_time = scheduled_publish_time;
-        }
-        const result = await client.post<{ id: string }>(`/${ig_account_id}/media_publish`, publishFields);
+        const result = await client.post<{ id: string }>(
+          `/${ig_account_id}/media_publish`,
+          { creation_id: container.id }
+        );
 
         if (response_format === "json") {
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
 
-        const action = scheduled_publish_time ? "scheduled" : "published";
         return {
           content: [
             {
               type: "text",
               text: [
-                `Reel ${action} successfully.`,
+                "Reel published successfully.",
                 "",
                 `- **Media ID**: \`${result.id}\``,
-                ...(scheduled_publish_time ? [`- **Scheduled for**: ${new Date(scheduled_publish_time * 1000).toISOString()}`] : []),
               ].join("\n"),
             },
           ],
@@ -436,7 +428,9 @@ Args:
 
 Returns: Media ID of the published carousel.
 
-Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in future) to schedule instead of publishing immediately.`,
+Scheduling: NOT supported — the Instagram Content Publishing API publishes
+immediately and has no scheduled_publish_time/publish_at parameter. Hold the
+post in your own queue and call this tool when it's time to publish.`,
       inputSchema: z
         .object({
           ig_account_id: z.string(),
@@ -451,7 +445,6 @@ Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in f
             .max(10)
             .describe("Media items for carousel (2–10)"),
           caption: z.string().optional(),
-          scheduled_publish_time: z.number().int().optional().describe("Unix timestamp to schedule carousel (10 min – 75 days in future)"),
           response_format: ResponseFormatSchema,
         })
         .strict(),
@@ -462,7 +455,7 @@ Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in f
         openWorldHint: false,
       },
     },
-    async ({ ig_account_id, items, caption, scheduled_publish_time, response_format }) => {
+    async ({ ig_account_id, items, caption, response_format }) => {
       try {
         // Step 1: Create all item containers in parallel
         const results = await Promise.allSettled(
@@ -522,29 +515,25 @@ Scheduling: Pass scheduled_publish_time (Unix timestamp, 10 min – 75 days in f
           carouselFields
         );
 
-        // Step 3: Publish
-        const publishFields: Record<string, unknown> = { creation_id: carousel.id };
-        if (scheduled_publish_time) {
-          publishFields.published = false;
-          publishFields.scheduled_publish_time = scheduled_publish_time;
-        }
-        const result = await client.post<{ id: string }>(`/${ig_account_id}/media_publish`, publishFields);
+        // Step 3: Publish (media_publish accepts only creation_id — always immediate)
+        const result = await client.post<{ id: string }>(
+          `/${ig_account_id}/media_publish`,
+          { creation_id: carousel.id }
+        );
 
         if (response_format === "json") {
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
 
-        const action = scheduled_publish_time ? "scheduled" : "published";
         return {
           content: [
             {
               type: "text",
               text: [
-                `Carousel ${action} successfully (${items.length} items).`,
+                `Carousel published successfully (${items.length} items).`,
                 "",
                 `- **Media ID**: \`${result.id}\``,
                 `- **Item containers**: ${containerIds.map((id) => `\`${id}\``).join(", ")}`,
-                ...(scheduled_publish_time ? [`- **Scheduled for**: ${new Date(scheduled_publish_time * 1000).toISOString()}`] : []),
               ].join("\n"),
             },
           ],

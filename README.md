@@ -91,11 +91,11 @@ npm install && npm run build
 
 ### Publish everywhere
 
-Post to Facebook Pages (text, photo, video, Reels, Stories), Instagram (photos, reels, stories, carousels), and Threads (text, images, video, GIFs, links). Schedule content in advance or cross-post to multiple platforms in one call.
+Post to Facebook Pages (text, photo, video, Reels, Stories), Instagram (photos, reels, stories, carousels), and Threads (text, images, video, GIFs, links). Schedule Facebook Page content in advance or cross-post to multiple platforms in one call.
 
 ```
 > Post our holiday hours to the Facebook page
-> Schedule an Instagram carousel for tomorrow at 9am
+> Schedule tomorrow's Facebook post for 9am
 > Cross-post this photo to both Facebook and Instagram
 > Publish a GIF to Threads with reply controls
 > Create a Facebook Reel from this video
@@ -304,17 +304,17 @@ Everything a brand needs to manage their Facebook presence, messaging, and live 
 
 ### Instagram — 37 tools
 
-Full Instagram Business API — publishing with scheduling, DMs, broadcast channels, engagement, discovery, and analytics.
+Full Instagram Business API — publishing, DMs, broadcast channels, engagement, discovery, and analytics.
 
 | Tool | Description |
 |:---|:---|
 | `meta_list_instagram_accounts` | List Instagram business accounts linked to your Facebook Pages |
 | `meta_get_instagram_media` | Get recent media for an Instagram account with pagination |
 | `meta_get_instagram_single_media` | Get a single media object by ID |
-| `meta_publish_instagram_photo` | Publish a photo with optional alt text and scheduling |
-| `meta_publish_instagram_reel` | Publish a reel with auto-polling and optional scheduling |
+| `meta_publish_instagram_photo` | Publish a photo with optional alt text |
+| `meta_publish_instagram_reel` | Publish a reel with auto-polling |
 | `meta_publish_instagram_story` | Publish a story (image or video with auto-polling) |
-| `meta_publish_instagram_carousel` | Publish a carousel (2–10 items, parallel processing, schedulable) |
+| `meta_publish_instagram_carousel` | Publish a carousel (2–10 items, parallel processing) |
 | `meta_publish_instagram_container` | Publish a pre-created media container |
 | `meta_check_instagram_container` | Check container processing status with actionable messages |
 | `meta_get_instagram_account_insights` | Account-level analytics with demographic breakdowns |
@@ -682,7 +682,7 @@ Targets **Meta Graph API v21.0** and **Threads API v1.0**.
 | API | Status |
 |:---|:---|
 | Facebook Pages API | **Comprehensive** — posts, comments, messaging, insights, events, media, Stories, Reels, Live Video, automated responses |
-| Instagram Graph API | **Comprehensive** — publishing, scheduling, comments, DMs, broadcast channels, hashtags, business discovery, insights |
+| Instagram Graph API | **Comprehensive** — publishing, comments, DMs, broadcast channels, hashtags, business discovery, insights |
 | Marketing API | **Comprehensive** — campaigns, ad sets, ads, creatives, targeting, audiences, pixels, CAPI, A/B testing, Advantage+ |
 | Threads API | **Comprehensive** — publishing (text, image, video, GIF, carousel, link), reply controls, location, insights |
 | Commerce API | **Supported** — product catalog CRUD, product sets |
