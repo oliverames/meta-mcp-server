@@ -117,6 +117,24 @@ export class MetaApiClient {
     return response.data as T;
   }
 
+  // Resumable-upload transfer step: POSTs to a Meta-provided rupload URL.
+  // The OAuth token goes in a header (not the body) and the remote file URL
+  // goes in the `file_url` header per the video upload protocol.
+  async postUploadUrl<T>(
+    uploadUrl: string,
+    fileUrl: string,
+    token: string
+  ): Promise<T> {
+    const response = await axios.post(uploadUrl, null, {
+      timeout: 120000,
+      headers: {
+        Authorization: `OAuth ${token}`,
+        file_url: fileUrl,
+      },
+    });
+    return response.data as T;
+  }
+
   async delete<T>(
     path: string,
     token?: string,
