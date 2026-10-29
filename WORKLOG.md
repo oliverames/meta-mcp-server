@@ -1,6 +1,6 @@
 ## 2026-10-29 - Recent-change release review
 
-**What changed**: Reviewed and merged PR #11 (Page story edges) and #12 (Unix-second timestamps), retaining their regression tests. Main `05a0e94` builds and all 112 tests pass with one worker. An earlier loaded parallel run timed out three integration probes; the serial rerun passed unchanged. Registry delivery is owned by the full maintenance publication run.
+**What changed**: Reviewed and merged PR #11 (Page story edges) and #12 (Unix-second timestamps), retaining their regression tests. Main `05a0e94` builds and all 112 tests pass with one worker. An earlier loaded parallel run timed out three integration probes; the serial rerun passed unchanged. Published version 3.0.1 to npm after the combined checks passed; source commit `56acafa` is on main.
 
 **Left off at**: Remaining publication checks are recorded in the cross-project review handoff.
 
